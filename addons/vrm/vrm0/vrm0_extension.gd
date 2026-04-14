@@ -25,7 +25,7 @@ func _import_post_parse(state: GLTFState) -> Error:
 		return OK
 		
 	var vrm_dict: Dictionary = extensions["VRM"]
-	var vrm_top_level := Vrm0TopLevel.new()
+	var vrm_top_level: Vrm0TopLevel = Vrm0TopLevel.new()
 	
 	vrm_top_level.exporter_version = vrm_dict.get("exporterVersion", "")
 	vrm_top_level.spec_version = vrm_dict.get("specVersion", "")
@@ -50,7 +50,7 @@ func _import_post_parse(state: GLTFState) -> Error:
 
 
 func _parse_meta(d: Dictionary) -> Vrm0Meta:
-	var meta := Vrm0Meta.new()
+	var meta: Vrm0Meta = Vrm0Meta.new()
 	meta.title = d.get("title", "")
 	meta.version = d.get("version", "")
 	meta.author = d.get("author", "")
@@ -68,7 +68,7 @@ func _parse_meta(d: Dictionary) -> Vrm0Meta:
 
 
 func _parse_humanoid(d: Dictionary) -> Vrm0Humanoid:
-	var h := Vrm0Humanoid.new()
+	var h: Vrm0Humanoid = Vrm0Humanoid.new()
 	h.arm_stretch = d.get("armStretch", 0.05)
 	h.leg_stretch = d.get("legStretch", 0.05)
 	h.upper_arm_twist = d.get("upperArmTwist", 0.5)
@@ -80,7 +80,7 @@ func _parse_humanoid(d: Dictionary) -> Vrm0Humanoid:
 	
 	if d.has("humanBones"):
 		for bd: Dictionary in d["humanBones"]:
-			var bone := Vrm0Humanoid.Bone.new()
+			var bone: Vrm0Humanoid.Bone = Vrm0Humanoid.Bone.new()
 			bone.bone = bd.get("bone", "")
 			bone.node = bd.get("node", -1)
 			bone.use_default_values = bd.get("useDefaultValues", true)
@@ -91,12 +91,12 @@ func _parse_humanoid(d: Dictionary) -> Vrm0Humanoid:
 
 
 func _parse_first_person(d: Dictionary) -> Vrm0FirstPerson:
-	var fp := Vrm0FirstPerson.new()
+	var fp: Vrm0FirstPerson = Vrm0FirstPerson.new()
 	fp.first_person_bone = d.get("firstPersonBone", -1)
 	fp.look_at_type_name = d.get("lookAtTypeName", "Bone")
 	if d.has("meshAnnotations"):
 		for md: Dictionary in d["meshAnnotations"]:
-			var m := Vrm0FirstPerson.MeshAnnotation.new()
+			var m: Vrm0FirstPerson.MeshAnnotation = Vrm0FirstPerson.MeshAnnotation.new()
 			m.mesh = md.get("mesh", -1)
 			m.first_person_flag = md.get("firstPersonFlag", "Auto")
 			fp.mesh_annotations.append(m)
@@ -107,14 +107,14 @@ func _parse_blend_shape(d: Dictionary) -> Vrm0BlendShape:
 	var bs := Vrm0BlendShape.new()
 	if d.has("blendShapeGroups"):
 		for g: Dictionary in d["blendShapeGroups"]:
-			var group := Vrm0BlendShapeGroup.new()
+			var group: Vrm0BlendShapeGroup = Vrm0BlendShapeGroup.new()
 			group.name = g.get("name", "")
 			group.preset_name = g.get("presetName", "")
 			group.is_binary = g.get("isBinary", false)
 			
 			if g.has("binds"):
 				for b: Dictionary in g["binds"]:
-					var bind := Vrm0BlendShapeBind.new()
+					var bind: Vrm0BlendShapeBind = Vrm0BlendShapeBind.new()
 					bind.mesh = b.get("mesh", -1)
 					bind.index = b.get("index", -1)
 					bind.weight = b.get("weight", 0.0)
@@ -128,24 +128,24 @@ func _parse_secondary_animation(d: Dictionary) -> Vrm0SecondaryAnimation:
 	var sec := Vrm0SecondaryAnimation.new()
 	if d.has("boneGroups"):
 		for s: Dictionary in d["boneGroups"]:
-			var spring := Vrm0Spring.new()
+			var spring: Vrm0Spring = Vrm0Spring.new()
 			spring.comment = s.get("comment", "")
 			spring.stiffness = s.get("stiffiness", 1.0) # Handling typo in schema
 			spring.gravity_power = s.get("gravityPower", 0.0)
 			if s.has("gravityDir"):
-				spring.gravity_dir = Vector3(s["gravityDir"].get("x",0), s["gravityDir"].get("y", -1), s["gravityDir"].get("z", 0))
+				spring.gravity_dir = Vector3(s["gravityDir"].get("x", 0), s["gravityDir"].get("y", -1), s["gravityDir"].get("z", 0))
 			spring.drag_force = s.get("dragForce", 0.4)
 			spring.center = s.get("center", -1)
 			spring.hit_radius = s.get("hitRadius", 0.02)
 			
 			if s.has("bones"):
-				var arr := PackedInt32Array()
+				var arr: PackedInt32Array = PackedInt32Array()
 				for b: int in s["bones"]:
 					arr.push_back(b)
 				spring.bones = arr
 				
 			if s.has("colliderGroups"):
-				var arr := PackedInt32Array()
+				var arr: PackedInt32Array = PackedInt32Array()
 				for cg: int in s["colliderGroups"]:
 					arr.push_back(cg)
 				spring.collider_groups = arr
@@ -154,14 +154,14 @@ func _parse_secondary_animation(d: Dictionary) -> Vrm0SecondaryAnimation:
 			
 	if d.has("colliderGroups"):
 		for cg: Dictionary in d["colliderGroups"]:
-			var group := Vrm0ColliderGroup.new()
+			var group: Vrm0ColliderGroup = Vrm0ColliderGroup.new()
 			group.node = cg.get("node", -1)
 			if cg.has("colliders"):
 				for c: Dictionary in cg["colliders"]:
-					var col := Vrm0Collider.new()
+					var col: Vrm0Collider = Vrm0Collider.new()
 					col.radius = c.get("radius", 0.0)
 					if c.has("offset"):
-						col.offset = Vector3(c["offset"].get("x",0), c["offset"].get("y",0), c["offset"].get("z",0))
+						col.offset = Vector3(c["offset"].get("x", 0), c["offset"].get("y", 0), c["offset"].get("z", 0))
 					group.colliders.append(col)
 			sec.collider_groups.append(group)
 			
@@ -172,6 +172,12 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	var vrm_top_level: Vrm0TopLevel = state.get_additional_data("vrm0") as Vrm0TopLevel
 	if vrm_top_level == null:
 		return OK
+		
+	# VRM 0.0 models are defined with +Z as forward. 
+	# VRM 1.0 and Godot use -Z as forward.
+	# We rotate the root 180 degrees to align the avatar with the expected forward vector.
+	if root is Node3D:
+		root.rotate_y(PI)
 		
 	var skeleton: Skeleton3D = null
 	var stack: Array[Node] = [root]
