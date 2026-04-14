@@ -1,0 +1,138 @@
+[gd_scene format=3 uid="uid://c44hxivuen1pk"]
+
+[ext_resource type="Script" uid="uid://blvsirfubnhr8" path="res://runtime/vrm_runtime_loader.gd" id="1_loader"]
+
+[sub_resource type="Environment" id="Environment_0em4h"]
+background_mode = 1
+ambient_light_source = 2
+ambient_light_color = Color(1, 1, 1, 1)
+ambient_light_energy = 0.1
+reflected_light_source = 2
+
+[node name="VrmRuntimeLoader" type="Node3D" unique_id=1137337819]
+script = ExtResource("1_loader")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1099013935]
+transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 5, 0)
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1574054725]
+environment = SubResource("Environment_0em4h")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1602594506]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 2)
+
+[node name="ModelAnchor" type="Node3D" parent="." unique_id=1252560870]
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=2059225993]
+
+[node name="LeftPanel" type="Panel" parent="UI" unique_id=1592651639]
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 300.0
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="UI/LeftPanel" unique_id=640625645]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/LeftPanel/MarginContainer" unique_id=1830370560]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="UI/LeftPanel/MarginContainer/VBoxContainer" unique_id=569595110]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "VRM Runtime Loader"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="UI/LeftPanel/MarginContainer/VBoxContainer" unique_id=2118150371]
+layout_mode = 2
+
+[node name="OpenButton" type="Button" parent="UI/LeftPanel/MarginContainer/VBoxContainer" unique_id=1459061696]
+layout_mode = 2
+text = "Open VRM File"
+
+[node name="HSeparator2" type="HSeparator" parent="UI/LeftPanel/MarginContainer/VBoxContainer" unique_id=474464216]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="UI/LeftPanel/MarginContainer/VBoxContainer" unique_id=1551048511]
+layout_mode = 2
+text = "Recent Models:"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="UI/LeftPanel/MarginContainer/VBoxContainer" unique_id=727568389]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RecentsList" type="VBoxContainer" parent="UI/LeftPanel/MarginContainer/VBoxContainer/ScrollContainer" unique_id=2139144059]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="UI/LeftPanel/MarginContainer/VBoxContainer" unique_id=238693314]
+layout_mode = 2
+text = "Status: OK"
+autowrap_mode = 3
+
+[node name="RightPanel" type="Panel" parent="UI" unique_id=2113497375]
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -330.0
+grow_horizontal = 0
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="UI/RightPanel" unique_id=608927007]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/RightPanel/MarginContainer" unique_id=497550766]
+layout_mode = 2
+
+[node name="ExpTitle" type="Label" parent="UI/RightPanel/MarginContainer/VBoxContainer" unique_id=1341876955]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Expressions"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="UI/RightPanel/MarginContainer/VBoxContainer" unique_id=2109856310]
+layout_mode = 2
+
+[node name="NoModelLabel" type="Label" parent="UI/RightPanel/MarginContainer/VBoxContainer" unique_id=387826831]
+layout_mode = 2
+text = "No model loaded."
+horizontal_alignment = 1
+
+[node name="ExpScroll" type="ScrollContainer" parent="UI/RightPanel/MarginContainer/VBoxContainer" unique_id=586713662]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ExpressionList" type="VBoxContainer" parent="UI/RightPanel/MarginContainer/VBoxContainer/ExpScroll" unique_id=518767169]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="FileDialog" type="FileDialog" parent="UI" unique_id=1356382857]
+title = "Open a File"
+initial_position = 2
+size = Vector2i(800, 600)
+ok_button_text = "Open"
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.vrm ; VRM Model")
+show_hidden_files = true
