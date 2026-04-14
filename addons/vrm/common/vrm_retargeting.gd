@@ -16,7 +16,10 @@ static func create_bone_map(skeleton: Skeleton3D, gltf_state: GLTFState, vrm_hum
 		var gltf_node_index: int = bone_data.node
 		
 		if gltf_node_index >= 0:
-			var skeleton_bone_name: String = gltf_state.get_node_name(gltf_node_index)
+			var gnode := gltf_state.get_nodes()[gltf_node_index]
+			var skeleton_bone_name: String = gnode.original_name
+			if skeleton_bone_name.is_empty():
+				skeleton_bone_name = gnode.resource_name
 			
 			# VRM 1.0 bone names (e.g. "leftUpperArm") neatly map 1:1 to Godot's 
 			# SkeletonProfileHumanoid names (e.g. "LeftUpperArm") by capitalizing the first letter.

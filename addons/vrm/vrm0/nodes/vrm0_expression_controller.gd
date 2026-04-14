@@ -111,7 +111,10 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 			var node_index: int = _find_node_with_mesh(gltf_state, b.mesh)
 			
 			if node_index != -1:
-				var node_name: String = gltf_state.get_node_name(node_index)
+				var gnode := gltf_state.get_nodes()[node_index]
+				var node_name: String = gnode.original_name
+				if node_name.is_empty():
+					node_name = gnode.resource_name
 				var mesh_instance_node: Node = root_node.find_child(node_name, true, false)
 				if mesh_instance_node:
 					var target_path: NodePath = get_path_to(mesh_instance_node)

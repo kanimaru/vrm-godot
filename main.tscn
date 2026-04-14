@@ -7,8 +7,11 @@
 
 [node name="Node3D" type="Node3D" unique_id=729613782]
 
-[node name="luna" parent="." unique_id=1831891855 instance=ExtResource("1_1bvp3")]
+[node name="luna" parent="." unique_id=1827865925 instance=ExtResource("1_1bvp3")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.4560711, 0, 0)
+
+[node name="Vrm1ExpressionController" parent="luna" index="1" unique_id=696358902]
+happy = 0.291
 
 [node name="tester-vrm0_0" parent="." unique_id=91094157 instance=ExtResource("2_lquwl")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3534722, 0, -0.77055883)
@@ -18,3 +21,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.4980607, 0, -0.63635206)
 
 [node name="model" parent="." unique_id=1208152340 instance=ExtResource("4_272bh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3700836, 0, 1.0968161)
+
+[editable path="luna"]
