@@ -78,7 +78,7 @@ func _parse_humanoid(d: Dictionary) -> Vrm1Humanoid:
 		var raw_bones: Dictionary = d["humanBones"]
 		for key: String in raw_bones:
 			var bd: Dictionary = raw_bones[key]
-			var bone: Vrm1Humanoid.Bone = Vrm1Humanoid.Bone.new()
+			var bone: Vrm1HumanoidBone = Vrm1HumanoidBone.new()
 			bone.node = bd.get("node", -1)
 			h.human_bones[key] = bone
 	return h
@@ -89,7 +89,7 @@ func _parse_first_person(d: Dictionary) -> Vrm1FirstPerson:
 	if d.has("meshAnnotations"):
 		var annotations: Array = d["meshAnnotations"]
 		for m_dict: Dictionary in annotations:
-			var m: Vrm1FirstPerson.MeshAnnotation = Vrm1FirstPerson.MeshAnnotation.new()
+			var m: Vrm1FirstPersonMeshAnnotation = Vrm1FirstPersonMeshAnnotation.new()
 			m.node = m_dict.get("node", -1)
 			m.type = m_dict.get("type", "auto")
 			fp.mesh_annotations.append(m)
@@ -118,3 +118,46 @@ func _parse_spring_bone(d: Dictionary) -> Vrm1SpringBone:
 	var sec: Vrm1SpringBone = Vrm1SpringBone.new()
 	# Empty stub; strictly explicit types
 	return sec
+
+
+func _import_post(state: GLTFState, root: Node) -> Error:
+	var vrm_top_level: Vrm1TopLevel = state.get_additional_data("vrm1") as Vrm1TopLevel
+	if vrm_top_level == null:
+		return OK
+		
+	var skeleton: Skeleton3D = null
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is Skeleton3D:
+			skeleton = n
+			break
+		stack.append_array(n.get_children(true))
+		
+	if skeleton != null and vrm_top_level.spring_bone != null:
+		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
+		var node_names: Dictionary[int, String] = {}
+		for i: int in range(gltf_nodes.size()):
+			var gnode: GLTFNode = gltf_nodes[i]
+			if gnode != null:
+				var node_name: String = gnode.original_name
+				if node_name.is_empty():
+					node_name = gnode.resource_name
+				node_names[i] = node_name
+				
+		var spring_sim: Vrm1SpringBoneSimulator = Vrm1SpringBoneSimulator.new()
+		spring_sim.name = "Vrm1SpringBoneSimulator"
+		spring_sim.spring_bone_data = vrm_top_level.spring_bone
+		spring_sim.gltf_node_names = node_names
+		
+		skeleton.add_child(spring_sim, true)
+		spring_sim.owner = root
+		
+	if vrm_top_level.expressions != null:
+		var expr_controller: Vrm1ExpressionController = Vrm1ExpressionController.new()
+		expr_controller.name = "Vrm1ExpressionController"
+		root.add_child(expr_controller, true)
+		expr_controller.owner = root
+		expr_controller.compile_vrm1_binds(vrm_top_level.expressions, state, root)
+		
+	return OK

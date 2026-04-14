@@ -12,7 +12,7 @@ static func create_bone_map(skeleton: Skeleton3D, gltf_state: GLTFState, vrm_hum
 	bone_map.profile = profile
 	
 	for vrm_bone: String in vrm_human_bones.keys():
-		var bone_data: Vrm1Humanoid.Bone = vrm_human_bones[vrm_bone]
+		var bone_data: Vrm1HumanoidBone = vrm_human_bones[vrm_bone]
 		var gltf_node_index: int = bone_data.node
 		
 		if gltf_node_index >= 0:

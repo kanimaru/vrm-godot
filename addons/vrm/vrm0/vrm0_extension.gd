@@ -79,7 +79,7 @@ func _parse_humanoid(d: Dictionary) -> Vrm0Humanoid:
 	h.has_translation_dof = d.get("hasTranslationDoF", false)
 	
 	if d.has("humanBones"):
-		for bd in d["humanBones"]:
+		for bd: Dictionary in d["humanBones"]:
 			var bone := Vrm0Humanoid.Bone.new()
 			bone.bone = bd.get("bone", "")
 			bone.node = bd.get("node", -1)
@@ -95,7 +95,7 @@ func _parse_first_person(d: Dictionary) -> Vrm0FirstPerson:
 	fp.first_person_bone = d.get("firstPersonBone", -1)
 	fp.look_at_type_name = d.get("lookAtTypeName", "Bone")
 	if d.has("meshAnnotations"):
-		for md in d["meshAnnotations"]:
+		for md: Dictionary in d["meshAnnotations"]:
 			var m := Vrm0FirstPerson.MeshAnnotation.new()
 			m.mesh = md.get("mesh", -1)
 			m.first_person_flag = md.get("firstPersonFlag", "Auto")
@@ -106,15 +106,15 @@ func _parse_first_person(d: Dictionary) -> Vrm0FirstPerson:
 func _parse_blend_shape(d: Dictionary) -> Vrm0BlendShape:
 	var bs := Vrm0BlendShape.new()
 	if d.has("blendShapeGroups"):
-		for g in d["blendShapeGroups"]:
-			var group := Vrm0BlendShape.BlendShapeGroup.new()
+		for g: Dictionary in d["blendShapeGroups"]:
+			var group := Vrm0BlendShapeGroup.new()
 			group.name = g.get("name", "")
 			group.preset_name = g.get("presetName", "")
 			group.is_binary = g.get("isBinary", false)
 			
 			if g.has("binds"):
-				for b in g["binds"]:
-					var bind := Vrm0BlendShape.Bind.new()
+				for b: Dictionary in g["binds"]:
+					var bind := Vrm0BlendShapeBind.new()
 					bind.mesh = b.get("mesh", -1)
 					bind.index = b.get("index", -1)
 					bind.weight = b.get("weight", 0.0)
@@ -127,8 +127,8 @@ func _parse_blend_shape(d: Dictionary) -> Vrm0BlendShape:
 func _parse_secondary_animation(d: Dictionary) -> Vrm0SecondaryAnimation:
 	var sec := Vrm0SecondaryAnimation.new()
 	if d.has("boneGroups"):
-		for s in d["boneGroups"]:
-			var spring := Vrm0SecondaryAnimation.Spring.new()
+		for s: Dictionary in d["boneGroups"]:
+			var spring := Vrm0Spring.new()
 			spring.comment = s.get("comment", "")
 			spring.stiffness = s.get("stiffiness", 1.0) # Handling typo in schema
 			spring.gravity_power = s.get("gravityPower", 0.0)
@@ -140,25 +140,25 @@ func _parse_secondary_animation(d: Dictionary) -> Vrm0SecondaryAnimation:
 			
 			if s.has("bones"):
 				var arr := PackedInt32Array()
-				for b in s["bones"]:
+				for b: int in s["bones"]:
 					arr.push_back(b)
 				spring.bones = arr
 				
 			if s.has("colliderGroups"):
 				var arr := PackedInt32Array()
-				for cg in s["colliderGroups"]:
+				for cg: int in s["colliderGroups"]:
 					arr.push_back(cg)
 				spring.collider_groups = arr
 				
 			sec.bone_groups.append(spring)
 			
 	if d.has("colliderGroups"):
-		for cg in d["colliderGroups"]:
-			var group := Vrm0SecondaryAnimation.ColliderGroup.new()
+		for cg: Dictionary in d["colliderGroups"]:
+			var group := Vrm0ColliderGroup.new()
 			group.node = cg.get("node", -1)
 			if cg.has("colliders"):
-				for c in cg["colliders"]:
-					var col := Vrm0SecondaryAnimation.Collider.new()
+				for c: Dictionary in cg["colliders"]:
+					var col := Vrm0Collider.new()
 					col.radius = c.get("radius", 0.0)
 					if c.has("offset"):
 						col.offset = Vector3(c["offset"].get("x",0), c["offset"].get("y",0), c["offset"].get("z",0))
@@ -166,3 +166,46 @@ func _parse_secondary_animation(d: Dictionary) -> Vrm0SecondaryAnimation:
 			sec.collider_groups.append(group)
 			
 	return sec
+
+
+func _import_post(state: GLTFState, root: Node) -> Error:
+	var vrm_top_level: Vrm0TopLevel = state.get_additional_data("vrm0") as Vrm0TopLevel
+	if vrm_top_level == null:
+		return OK
+		
+	var skeleton: Skeleton3D = null
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is Skeleton3D:
+			skeleton = n
+			break
+		stack.append_array(n.get_children(true))
+		
+	if skeleton != null and vrm_top_level.secondary_animation != null:
+		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
+		var node_names: Dictionary[int, String] = {}
+		for i: int in range(gltf_nodes.size()):
+			var gnode: GLTFNode = gltf_nodes[i]
+			if gnode != null:
+				var node_name: String = gnode.original_name
+				if node_name.is_empty():
+					node_name = gnode.resource_name
+				node_names[i] = node_name
+				
+		var spring_sim: Vrm0SpringBoneSimulator = Vrm0SpringBoneSimulator.new()
+		spring_sim.name = "Vrm0SpringBoneSimulator"
+		spring_sim.secondary_animation = vrm_top_level.secondary_animation
+		spring_sim.gltf_node_names = node_names
+		
+		skeleton.add_child(spring_sim, true)
+		spring_sim.owner = root
+		
+	if vrm_top_level.blend_shape_master != null:
+		var expr_controller: Vrm0ExpressionController = Vrm0ExpressionController.new()
+		expr_controller.name = "Vrm0ExpressionController"
+		root.add_child(expr_controller, true)
+		expr_controller.owner = root
+		expr_controller.compile_vrm0_binds(vrm_top_level.blend_shape_master, state, root)
+		
+	return OK

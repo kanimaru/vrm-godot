@@ -1,6 +1,6 @@
 @tool
 extends SpringBoneSimulator3D
-class_name VrmSpringBone
+class_name Vrm1SpringBoneSimulator
 
 
 ## The parsed VRM 1.0 SpringBone definitions.
@@ -21,7 +21,7 @@ func _ready() -> void:
 	set_setting_count(num_springs)
 	
 	for i: int in range(num_springs):
-		var spring: Vrm1SpringBone.Spring = spring_bone_data.springs[i]
+		var spring: Vrm1SpringBoneSpring = spring_bone_data.springs[i]
 		var num_joints: int = spring.joints.size()
 		if num_joints == 0:
 			continue
@@ -46,11 +46,10 @@ func _ready() -> void:
 		
 		# Apply verlet properties on a per-bone basis into the C++ native properties
 		for j: int in range(num_joints):
-			var joint: Vrm1SpringBone.Joint = spring.joints[j]
+			var joint: Vrm1SpringBoneJoint = spring.joints[j]
 			
 			set_joint_stiffness(i, j, joint.stiffness)
 			set_joint_drag(i, j, joint.drag_force)
 			set_joint_gravity(i, j, joint.gravity_power)
 			set_joint_gravity_direction(i, j, joint.gravity_dir)
 			set_joint_radius(i, j, joint.hit_radius)
-

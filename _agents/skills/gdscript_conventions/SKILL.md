@@ -27,7 +27,7 @@ When writing or modifying GDScript for this project, you must adhere strictly to
 - **Indentation**: Use **Tabs** (not spaces).
 - **Line Length**: Keep lines under 100 characters (aim for 80).
 - **Blank Lines**: 
-  - **Two** blank lines between functions and class definitions.
+  - **Two** blank lines between functions, methods and class definitions (similar to Python PEP 8).
   - **One** blank line inside functions to separate logical sections.
 - **Whitespace**:
   - One space around operators and after commas.
@@ -50,6 +50,9 @@ When writing or modifying GDScript for this project, you must adhere strictly to
 ## 4. Static Typing
 
 - **Declaration**: Use `<variable>: <type> = <value>`.
+- **Typed Containers**: Use typed Arrays and Dictionaries whenever possible (Godot 4.4+):
+  - `var names: Array[String] = []`
+  - `var scores: Dictionary[String, int] = {}`
 - **Avoid Redundancy**: Don't use `var direction: Vector3 = Vector3()`.
 - **Function Return**: Always declare return types: `func get_speed() -> float:`.
 - **Explicit Type**: Use always explicit types (e.g., `@onready var timer: Timer = $Timer`).
@@ -92,3 +95,17 @@ Organize script content in this specific order:
 - Prefer explicit signal connections in code: `button.pressed.connect(_on_button_pressed)`.
 - Use unique names for nodes referenced in scripts.
 - Declare local variables as close as possible to their first use.
+
+## 8. Properties with Setters/Getters
+
+- In Godot 4, properties with custom inline `set(v)` or `get()` must be placed in **indented blocks**. Single-line/inline setters without indents cause syntax errors.
+- **Correct**:
+```gdscript
+@export var speed: float = 0.0:
+	set(v):
+		speed = clampf(v, 0.0, 1.0)
+```
+- **Incorrect** (`Error: Property with inline code must go to an indented block`):
+```gdscript
+@export var speed: float = 0.0: set(v): speed = clampf(v, 0.0, 1.0)
+```

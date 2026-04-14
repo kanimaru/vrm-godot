@@ -1,11 +1,10 @@
 @tool
 extends Node3D
-class_name VrmExpressionController
+class_name Vrm0ExpressionController
 
 
 ## A dictionary containing the runtime mappings of expressions to MeshInstance3D blend shapes.
-## Format: { "joy": [ { "mesh": NodePath, "index": int, "weight": float } ] }
-@export var expression_binds: Dictionary = {}
+var expression_binds: Dictionary[String, RuntimeBlendShapeBinds] = {}
 
 
 ## Standard VRM Expressions
@@ -87,31 +86,28 @@ class_name VrmExpressionController
 ## Applies the blend shape modifiers for a given expression name.
 func set_expression(expression_name: String, value: float) -> void:
 	if expression_binds.has(expression_name):
-		var binds: Array = expression_binds[expression_name]
-		for bind_variant: Variant in binds:
-			var bind: Dictionary = bind_variant as Dictionary
-			var mesh_path: NodePath = bind["mesh"]
-			var shape_index: int = bind["index"]
-			var weight_factor: float = bind["weight"]
-			
-			var mesh_instance: MeshInstance3D = get_node_or_null(mesh_path) as MeshInstance3D
-			if mesh_instance != null:
-				# Godot 4 MeshInstance3D blend shapes are manipulated between 0.0 and 1.0. 
-				# The VRM weight factor provides scaling natively.
-				mesh_instance.set_blend_shape_value(shape_index, value * weight_factor)
+		var runtime_binds := expression_binds[expression_name] as RuntimeBlendShapeBinds
+		if runtime_binds:
+			for bind: RuntimeBlendShapeBind in runtime_binds.binds:
+				var mesh_instance: MeshInstance3D = get_node_or_null(bind.mesh_path) as MeshInstance3D
+				if mesh_instance != null:
+					# Godot 4 MeshInstance3D blend shapes are manipulated between 0.0 and 1.0. 
+					# The VRM weight factor provides scaling natively.
+					mesh_instance.set_blend_shape_value(bind.shape_index, value * bind.weight)
 
 
 ## Utility method meant to be called by the GLTFDocumentExtension during the `_generate_scene_node` hook.
 ## Populates the `expression_binds` dictionary so it works seamlessly at runtime.
 func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFState, root_node: Node) -> void:
-	for group: Vrm0BlendShape.BlendShapeGroup in blend_shape_master.blend_shape_groups:
-		var binds_for_group: Array = []
+	for group_ref in blend_shape_master.blend_shape_groups:
+		var group := group_ref as Vrm0BlendShapeGroup
+		var binds_for_group: Array[RuntimeBlendShapeBind] = []
 		var expression_key: String = group.preset_name.to_lower()
 		if expression_key == "" or expression_key == "unknown":
 			expression_key = group.name.to_lower()
 			
-		for b: Vrm0BlendShape.Bind in group.binds:
-			var mesh_name: String = gltf_state.get_mesh_name(b.mesh)
+		for b_ref in group.binds:
+			var b := b_ref as Vrm0BlendShapeBind
 			var node_index: int = _find_node_with_mesh(gltf_state, b.mesh)
 			
 			if node_index != -1:
@@ -120,13 +116,15 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 				if mesh_instance_node:
 					var target_path: NodePath = get_path_to(mesh_instance_node)
 					var weight: float = b.weight / 100.0 # VRM 0.0 weights are 0-100, normalize to 0-1
-					binds_for_group.append({
-						"mesh": target_path,
-						"index": b.index,
-						"weight": weight
-					})
+					var rb := RuntimeBlendShapeBind.new()
+					rb.mesh_path = target_path
+					rb.shape_index = b.index
+					rb.weight = weight
+					binds_for_group.append(rb)
 					
-		expression_binds[expression_key] = binds_for_group
+		var runtime_binds := RuntimeBlendShapeBinds.new()
+		runtime_binds.binds = binds_for_group
+		expression_binds[expression_key] = runtime_binds
 
 
 ## Helper function to resolve which GLTF node contains a specific mesh index

@@ -13,7 +13,7 @@ class Bone extends Resource:
 	@export var axis_length: float = 0.0
 
 
-@export var human_bones: Array[Bone] = []
+@export var human_bones: Array[Resource] = []
 @export var arm_stretch: float = 0.05
 @export var leg_stretch: float = 0.05
 @export var upper_arm_twist: float = 0.5

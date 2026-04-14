@@ -16,7 +16,7 @@ class DegreeMap extends Resource:
 
 @export var first_person_bone: int = -1
 @export var first_person_bone_offset: Vector3
-@export var mesh_annotations: Array[MeshAnnotation] = []
+@export var mesh_annotations: Array[Resource] = []
 @export var look_at_type_name: String = "Bone"
 @export var look_at_horizontal_inner: DegreeMap
 @export var look_at_horizontal_outer: DegreeMap

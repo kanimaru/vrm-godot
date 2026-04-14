@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://viq7f806v5nv"]
+
+[ext_resource type="PackedScene" uid="uid://cl40rwo2k308m" path="res://assets/luna/luna.vrm" id="1_1bvp3"]
+[ext_resource type="PackedScene" uid="uid://cw6itd8l7uiyt" path="res://assets/tester/tester-vrm0.0.vrm" id="2_lquwl"]
+[ext_resource type="PackedScene" uid="uid://c0eo5uq82ex4s" path="res://assets/tester/tester-vrm1.0.vrm" id="3_7mycd"]
+[ext_resource type="PackedScene" uid="uid://dwp7ll1f6xf2h" path="res://assets/temptic/model.vrm" id="4_272bh"]
+
+[node name="Node3D" type="Node3D" unique_id=729613782]
+
+[node name="luna" parent="." unique_id=1831891855 instance=ExtResource("1_1bvp3")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.4560711, 0, 0)
+
+[node name="tester-vrm0_0" parent="." unique_id=91094157 instance=ExtResource("2_lquwl")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3534722, 0, -0.77055883)
+
+[node name="tester-vrm1_0" parent="." unique_id=100573652 instance=ExtResource("3_7mycd")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.4980607, 0, -0.63635206)
+
+[node name="model" parent="." unique_id=1208152340 instance=ExtResource("4_272bh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3700836, 0, 1.0968161)
