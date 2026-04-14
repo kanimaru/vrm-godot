@@ -106,12 +106,64 @@ func _parse_look_at(d: Dictionary) -> Vrm1LookAt:
 
 func _parse_expressions(d: Dictionary) -> Vrm1Expressions:
 	var exp_node: Vrm1Expressions = Vrm1Expressions.new()
-	# Empty stub for now; fully typed dictionaries
 	if d.has("preset"):
-		pass
+		for key: String in d["preset"].keys():
+			var expr_dict: Dictionary = d["preset"][key]
+			var expr_data: Vrm1ExpressionData = _parse_expression_data(expr_dict)
+			exp_node.preset[key] = expr_data
+			
 	if d.has("custom"):
-		pass
+		for key: String in d["custom"].keys():
+			var expr_dict: Dictionary = d["custom"][key]
+			var expr_data: Vrm1ExpressionData = _parse_expression_data(expr_dict)
+			exp_node.custom[key] = expr_data
+			
 	return exp_node
+
+
+func _parse_expression_data(d: Dictionary) -> Vrm1ExpressionData:
+	var ed: Vrm1ExpressionData = Vrm1ExpressionData.new()
+	ed.is_binary = d.get("isBinary", false)
+	ed.override_blink = d.get("overrideBlink", "none")
+	ed.override_look_at = d.get("overrideLookAt", "none")
+	ed.override_mouth = d.get("overrideMouth", "none")
+	
+	if d.has("morphTargetBinds"):
+		for mb_d: Dictionary in d["morphTargetBinds"]:
+			var mb: Vrm1ExpressionMorphBind = Vrm1ExpressionMorphBind.new()
+			mb.node = mb_d.get("node", -1)
+			mb.index = mb_d.get("index", -1)
+			mb.weight = mb_d.get("weight", 0.0)
+			ed.morph_binds.append(mb)
+			
+	if d.has("materialColorBinds"):
+		for cb_d: Dictionary in d["materialColorBinds"]:
+			var cb: Vrm1ExpressionMaterialColorBind = Vrm1ExpressionMaterialColorBind.new()
+			cb.material = cb_d.get("material", -1)
+			cb.type = cb_d.get("type", "")
+			if cb_d.has("targetValue"):
+				var tv: Array = cb_d["targetValue"]
+				var p_tv: PackedFloat32Array = PackedFloat32Array()
+				for v: float in tv:
+					p_tv.append(v)
+				cb.target_value = p_tv
+			ed.material_color_binds.append(cb)
+			
+	if d.has("textureTransformBinds"):
+		for tb_d: Dictionary in d["textureTransformBinds"]:
+			var tb: Vrm1ExpressionTextureTransformBind = Vrm1ExpressionTextureTransformBind.new()
+			tb.material = tb_d.get("material", -1)
+			if tb_d.has("scale"):
+				tb.scale = Vector2(tb_d["scale"][0], tb_d["scale"][1])
+			else:
+				tb.scale = Vector2(1, 1)
+			if tb_d.has("offset"):
+				tb.offset = Vector2(tb_d["offset"][0], tb_d["offset"][1])
+			else:
+				tb.offset = Vector2(0, 0)
+			ed.texture_transform_binds.append(tb)
+			
+	return ed
 
 
 func _parse_spring_bone(d: Dictionary) -> Vrm1SpringBone:

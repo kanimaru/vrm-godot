@@ -130,8 +130,8 @@ func _register_expression(expr_name: String, expr: Vrm1ExpressionData, gltf_stat
 	print("_register_expression: ", expr_name, " ", expr.morph_binds)
 	# Morph binds
 	for mb: Vrm1ExpressionMorphBind in expr.morph_binds:
-		var node_index: int = _find_node_with_mesh(gltf_state, mb.node)
-		if node_index != -1:
+		var node_index: int = mb.node
+		if node_index != -1 and node_index < gltf_state.get_nodes().size():
 			var gnode := gltf_state.get_nodes()[node_index]
 			var node_name: String = gnode.original_name
 			if node_name.is_empty():
