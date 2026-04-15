@@ -419,19 +419,17 @@ func _apply_expressions() -> void:
 
 	# Apply Material UVs
 	for mat in _base_material_uvs.keys():
-		var base_uv_state := _base_material_uvs[mat] as RuntimeMaterialUVState
+		var base_uv_state: RuntimeMaterialUVState = _base_material_uvs[mat]
 		var base_s: Vector2 = base_uv_state.scale
 		var base_o: Vector2 = base_uv_state.offset
-		var s: Vector2 = base_s
-		var o: Vector2 = base_o
 		
 		if accumulated_uv_scales.has(mat):
-			s = accumulated_uv_scales[mat]
-			o = accumulated_uv_offsets[mat]
+			base_s = accumulated_uv_scales[mat]
+			base_o = accumulated_uv_offsets[mat]
 			
 		if mat is StandardMaterial3D or mat is BaseMaterial3D:
-			mat.uv1_scale = Vector3(s.x, s.y, 1.0)
-			mat.uv1_offset = Vector3(o.x, o.y, 0.0)
+			mat.uv1_scale = Vector3(base_s.x, base_s.y, 1.0)
+			mat.uv1_offset = Vector3(base_o.x, base_o.y, 0.0)
 		elif mat is ShaderMaterial:
-			mat.set_shader_parameter("uv1_scale", Vector3(s.x, s.y, 1.0))
-			mat.set_shader_parameter("uv1_offset", Vector3(o.x, o.y, 0.0))
+			mat.set_shader_parameter("uv1_scale", Vector3(base_s.x, base_s.y, 1.0))
+			mat.set_shader_parameter("uv1_offset", Vector3(base_o.x, base_o.y, 0.0))

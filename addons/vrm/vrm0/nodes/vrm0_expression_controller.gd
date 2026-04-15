@@ -3,7 +3,6 @@ extends Node3D
 class_name Vrm0ExpressionController
 
 
-## A dictionary containing the runtime mappings of expressions.
 ## Uses the shared RuntimeExpression class from VRM1 runtime.
 var _binds: Dictionary[String, RuntimeExpression] = {}
 var expressions: Array[String]: 
@@ -16,9 +15,9 @@ var expressions: Array[String]:
 @export var custom_expressions: Dictionary[String, float] = {}
 
 var _dirty: bool = false
-var _base_morphs: Dictionary[NodePath, Dictionary] = {} # {NodePath: {index: value}}
-var _base_material_colors: Dictionary[NodePath, Dictionary] = {} # {NodePath: {prop: Color}}
-var _base_material_uvs: Dictionary[NodePath, Dictionary] = {} # {NodePath: {prop: [scale, offset]}}
+var _base_morphs: Dictionary[NodePath, RuntimeNodeMorphState] = {}
+var _base_material_colors: Dictionary[NodePath, RuntimeMaterialColorState] = {}
+var _base_material_uvs: Dictionary[NodePath, RuntimeMaterialUVState] = {}
 
 
 ## Standard VRM Expressions
@@ -75,23 +74,34 @@ func set_expression(expression_name: String, value: float) -> void:
 
 func _apply_expressions() -> void:
 	# Reset morph targets to base state
-	for mesh_path in _base_morphs:
-		var node = get_node_or_null(mesh_path)
+	for mesh_path: NodePath in _base_morphs:
+		var node: Node = get_node_or_null(mesh_path)
 		if node and node.has_method("set_blend_shape_value"):
-			var base_values = _base_morphs[mesh_path]
-			for idx in base_values:
-				node.set_blend_shape_value(idx, base_values[idx])
+			var base_state: RuntimeNodeMorphState = _base_morphs[mesh_path]
+			for idx: int in base_state.blend_shapes:
+				node.set_blend_shape_value(idx, base_state.blend_shapes[idx])
 
 	# Reset material colors to base state
-	for mat_path in _base_material_colors:
-		var node = get_node_or_null(mat_path)
+	for mat_path: NodePath in _base_material_colors:
+		var node: Node = get_node_or_null(mat_path)
 		if node and node is MeshInstance3D:
-			for surface_idx in range(node.get_surface_override_material_count()):
-				var mat = node.get_surface_override_material(surface_idx)
+			for surface_idx: int in range(node.get_surface_override_material_count()):
+				var mat: StandardMaterial3D = node.get_surface_override_material(surface_idx)
 				if mat:
-					var base_colors = _base_material_colors[mat_path]
-					for prop in base_colors:
-						mat.set(prop, base_colors[prop])
+					var base_state: RuntimeMaterialColorState = _base_material_colors[mat_path]
+					for prop in base_state.properties:
+						mat.set(prop, base_state.properties[prop])
+
+	# Reset material UVs to base state
+	for mat_path: NodePath in _base_material_uvs:
+		var node: Node = get_node_or_null(mat_path)
+		if node and node is MeshInstance3D:
+			for surface_idx: int in range(node.get_surface_override_material_count()):
+				var mat: StandardMaterial3D = node.get_surface_override_material(surface_idx)
+				if mat:
+					var base_state: RuntimeMaterialUVState = _base_material_uvs[mat_path]
+					mat.set("uv1_scale", base_state.scale)
+					mat.set("uv1_offset", base_state.offset)
 
 	# Accumulate and apply all active expressions
 	for expr_key in _binds:
@@ -104,29 +114,29 @@ func _apply_expressions() -> void:
 		if val <= 0.0:
 			continue
 
-		var re: RuntimeExpression = _binds[expr_key]
-		if re.is_binary:
+		var expression: RuntimeExpression = _binds[expr_key]
+		if expression.is_binary:
 			val = 1.0 if val > 0.5 else 0.0
 
 		# Morph binds (uses RuntimeMorphBind fields: path, index, weight)
-		for mb: RuntimeMorphBind in re.morph_binds:
-			var node = get_node_or_null(mb.path)
+		for morph_bind: RuntimeMorphBind in expression.morph_binds:
+			var node: Node = get_node_or_null(morph_bind.path)
 			if node and node.has_method("set_blend_shape_value"):
-				var current: float = node.get_blend_shape_value(mb.index) if node.has_method("get_blend_shape_value") else 0.0
-				node.set_blend_shape_value(mb.index, current + (val * mb.weight))
+				var current: float = node.get_blend_shape_value(morph_bind.index) if node.has_method("get_blend_shape_value") else 0.0
+				node.set_blend_shape_value(morph_bind.index, current + (val * morph_bind.weight))
 
 		# Material color binds (uses RuntimeMaterialColorBind fields: material, prop, color)
-		for mcb: RuntimeMaterialColorBind in re.color_binds:
-			if mcb.material:
+		for material_color_bind: RuntimeMaterialColorBind in expression.color_binds:
+			if material_color_bind.material:
 				var base_col: Color = Color.WHITE
 				# Look up the base color via stored path info
-				mcb.material.set(mcb.prop, mcb.color * val)
+				material_color_bind.material.set(material_color_bind.prop, material_color_bind.color * val)
 
 		# Texture transform binds (uses RuntimeTextureTransformBind fields: material, scale, offset)
-		for ttb: RuntimeTextureTransformBind in re.uv_binds:
-			if ttb.material:
-				ttb.material.set("uv1_scale", ttb.scale * val)
-				ttb.material.set("uv1_offset", ttb.offset * val)
+		for texture_transform_bind: RuntimeTextureTransformBind in expression.uv_binds:
+			if texture_transform_bind.material:
+				texture_transform_bind.material.set("uv1_scale", texture_transform_bind.scale * val)
+				texture_transform_bind.material.set("uv1_offset", texture_transform_bind.offset * val)
 
 
 func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFState, root_node: Node) -> void:
@@ -177,12 +187,13 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 
 				# Capture base state
 				if not _base_morphs.has(target_path):
-					_base_morphs[target_path] = {}
-				if not _base_morphs[target_path].has(blend_shape_bind.index):
+					_base_morphs[target_path] = RuntimeNodeMorphState.new()
+				var base_state := _base_morphs[target_path]
+				if not base_state.blend_shapes.has(blend_shape_bind.index):
 					if mesh_instance_node.has_method("get_blend_shape_value"):
-						_base_morphs[target_path][blend_shape_bind.index] = mesh_instance_node.get_blend_shape_value(blend_shape_bind.index)
+						base_state.blend_shapes[blend_shape_bind.index] = mesh_instance_node.get_blend_shape_value(blend_shape_bind.index)
 					else:
-						_base_morphs[target_path][blend_shape_bind.index] = 0.0
+						base_state.blend_shapes[blend_shape_bind.index] = 0.0
 
 		# Material binds
 		for material_bind: Vrm0MaterialBind in group.material_binds:
@@ -208,9 +219,10 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 				# Capture base state
 				var mat_path: NodePath = NodePath("../" + _get_path_from_root(target_mesh, root_node))
 				if not _base_material_colors.has(mat_path):
-					_base_material_colors[mat_path] = {}
-				if not _base_material_colors[mat_path].has(prop_info.property):
-					_base_material_colors[mat_path][prop_info.property] = mat.get(prop_info.property)
+					_base_material_colors[mat_path] = RuntimeMaterialColorState.new()
+				var base_state := _base_material_colors[mat_path]
+				if not base_state.properties.has(prop_info.property):
+					base_state.properties[prop_info.property] = mat.get(prop_info.property)
 
 			elif prop_info.type == "uv" and material_bind.target_value.size() >= 4:
 				var texture_transform_bind := RuntimeTextureTransformBind.new()
@@ -218,6 +230,14 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 				texture_transform_bind.scale = Vector2(material_bind.target_value[0], material_bind.target_value[1])
 				texture_transform_bind.offset = Vector2(material_bind.target_value[2], material_bind.target_value[3])
 				expression.uv_binds.append(texture_transform_bind)
+
+				# Capture base state
+				var mat_path: NodePath = NodePath("../" + _get_path_from_root(target_mesh, root_node))
+				if not _base_material_uvs.has(mat_path):
+					var base_state := RuntimeMaterialUVState.new()
+					base_state.scale = mat.get("uv1_scale")
+					base_state.offset = mat.get("uv1_offset")
+					_base_material_uvs[mat_path] = base_state
 
 		_binds[expression_key] = expression
 
