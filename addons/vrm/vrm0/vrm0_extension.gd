@@ -5,6 +5,9 @@ class_name Vrm0Extension
 ## Handles legacy VRM 0.0 avatars.
 
 
+const m_bind_script = preload("structures/vrm0_material_bind.gd")
+
+
 func _get_supported_extensions() -> PackedStringArray:
 	return PackedStringArray(["VRM"])
 
@@ -119,6 +122,14 @@ func _parse_blend_shape(d: Dictionary) -> Vrm0BlendShape:
 					bind.index = b.get("index", -1)
 					bind.weight = b.get("weight", 0.0)
 					group.binds.append(bind)
+			
+			if g.has("materialValues"):
+				for m: Dictionary in g["materialValues"]:
+					var m_bind : Resource = m_bind_script.new()
+					m_bind.material_name = m.get("materialName", "")
+					m_bind.property_name = m.get("propertyName", "")
+					m_bind.target_value = PackedFloat32Array(m.get("targetValue", []))
+					group.material_binds.append(m_bind)
 			
 			bs.blend_shape_groups.append(group)
 	return bs

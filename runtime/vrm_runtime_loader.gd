@@ -117,7 +117,7 @@ func _update_expressions_ui() -> void:
 	var expression_names: Array = []
 	
 	if _expression_controller is Vrm0ExpressionController:
-		expression_names = _expression_controller.expression_binds.keys()
+		expression_names = _expression_controller.expressions
 	elif _expression_controller is Vrm1ExpressionController:
 		# Accessing the internal _binds dictionary
 		var binds = _expression_controller.get("_binds")
