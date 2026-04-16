@@ -255,7 +255,7 @@ func _resolve_material_prop_name(vrm_color_type: String) -> String:
 
 
 func _get_material_color(mat: Material, prop_name: String) -> Color:
-	if mat is StandardMaterial3D or mat is BaseMaterial3D:
+	if mat is BaseMaterial3D:
 		if prop_name in mat:
 			return mat.get(prop_name)
 	elif mat is ShaderMaterial:
@@ -267,8 +267,8 @@ func _get_material_color(mat: Material, prop_name: String) -> Color:
 
 
 func _get_material_uv_scale(mat: Material) -> Vector2:
-	if mat is StandardMaterial3D or mat is BaseMaterial3D:
-		return mat.uv1_scale.xy
+	if mat is BaseMaterial3D:
+		return Vector2(mat.uv1_scale.x, mat.uv1_scale.y)
 	elif mat is ShaderMaterial:
 		var param = mat.get_shader_parameter("uv1_scale")
 		if typeof(param) == TYPE_VECTOR3 or typeof(param) == TYPE_VECTOR2:
@@ -278,7 +278,7 @@ func _get_material_uv_scale(mat: Material) -> Vector2:
 
 func _get_material_uv_offset(mat: Material) -> Vector2:
 	if mat is StandardMaterial3D or mat is BaseMaterial3D:
-		return mat.uv1_offset.xy
+		return Vector2(mat.uv1_offset.x, mat.uv1_offset.y)
 	elif mat is ShaderMaterial:
 		var param = mat.get_shader_parameter("uv1_offset")
 		if typeof(param) == TYPE_VECTOR3 or typeof(param) == TYPE_VECTOR2:
