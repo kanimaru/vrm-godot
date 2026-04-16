@@ -47,6 +47,20 @@ func _import_post_parse(state: GLTFState) -> Error:
 		vrm_top_level.spring_bone = _parse_spring_bone(extensions["VRMC_springBone"])
 
 	state.set_additional_data("vrm1", vrm_top_level)
+
+	# Parse per-material VRMC_materials_mtoon extensions
+	var mtoon_configs: Array[MtoonMaterial] = []
+	if json.has("materials"):
+		var gltf_materials: Array = json["materials"]
+		for mat_idx: int in range(gltf_materials.size()):
+			var mat_json: Dictionary = gltf_materials[mat_idx]
+			if mat_json.has("extensions") and mat_json["extensions"].has("VRMC_materials_mtoon"):
+				var mtoon: MtoonMaterial = _parse_vrm1_mtoon(mat_json, state)
+				mtoon_configs.append(mtoon)
+			else:
+				mtoon_configs.append(null)
+	state.set_additional_data("vrm1_mtoon", mtoon_configs)
+
 	return OK
 
 
@@ -176,7 +190,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	var vrm_top_level: Vrm1TopLevel = state.get_additional_data("vrm1") as Vrm1TopLevel
 	if vrm_top_level == null:
 		return OK
-		
+
 	var skeleton: Skeleton3D = null
 	var stack: Array[Node] = [root]
 	while not stack.is_empty():
@@ -185,7 +199,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			skeleton = n
 			break
 		stack.append_array(n.get_children(true))
-		
+
 	if skeleton != null and vrm_top_level.spring_bone != null:
 		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
 		var node_names: Dictionary[int, String] = {}
@@ -196,20 +210,229 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 				if node_name.is_empty():
 					node_name = gnode.resource_name
 				node_names[i] = node_name
-				
+
 		var spring_sim: Vrm1SpringBoneSimulator = Vrm1SpringBoneSimulator.new()
 		spring_sim.name = "Vrm1SpringBoneSimulator"
 		spring_sim.spring_bone_data = vrm_top_level.spring_bone
 		spring_sim.gltf_node_names = node_names
-		
+
 		skeleton.add_child(spring_sim, true)
 		spring_sim.owner = root
-		
+
 	if vrm_top_level.expressions != null:
 		var expr_controller: Vrm1ExpressionController = Vrm1ExpressionController.new()
 		expr_controller.name = "Vrm1ExpressionController"
 		root.add_child(expr_controller, true)
 		expr_controller.owner = root
 		expr_controller.compile_vrm1_binds(vrm_top_level.expressions, state, root)
-		
+
+	# --- MToon Material Replacement ---
+	var mtoon_configs: Variant = state.get_additional_data("vrm1_mtoon")
+	if mtoon_configs is Array:
+		var gltf_materials: Array = state.get_materials()
+		var active_mtoons: Array[MtoonMaterial] = []
+
+		# Build mapping: original StandardMaterial3D -> (MtoonMaterial, body ShaderMaterial)
+		var replacement_map: Dictionary[int, ShaderMaterial] = {}
+		for mat_idx: int in range(mtoon_configs.size()):
+			var mtoon: MtoonMaterial = mtoon_configs[mat_idx] as MtoonMaterial
+			if mtoon == null:
+				continue
+
+			var body_mat := ShaderMaterial.new()
+			body_mat.shader = MtoonMaterial.MTOON_SHADER
+			var outline_mat := ShaderMaterial.new()
+			outline_mat.shader = MtoonMaterial.MTOON_OUTLINE_SHADER
+			mtoon.bind(body_mat, outline_mat)
+
+			replacement_map[mat_idx] = body_mat
+			active_mtoons.append(mtoon)
+
+		if not active_mtoons.is_empty():
+			_replace_materials_on_meshes(root, gltf_materials, replacement_map)
+
+			var mtoon_controller_script := preload("../nodes/mtoon_controller.gd")
+			var controller: Node3D = mtoon_controller_script.new()
+			controller.name = "MtoonController"
+			controller.set("mtoon_materials", active_mtoons)
+			root.add_child(controller, true)
+			controller.owner = root
+
 	return OK
+
+
+# ---------------------------------------------------------------------------
+# MToon Parsing — VRM 1.0 (VRMC_materials_mtoon)
+# ---------------------------------------------------------------------------
+
+func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> MtoonMaterial:
+	var mtoon := MtoonMaterial.new()
+	var ext: Dictionary = mat_json["extensions"]["VRMC_materials_mtoon"]
+
+	# --- Standard glTF PBR fields ---
+	if mat_json.has("pbrMetallicRoughness"):
+		var pbr: Dictionary = mat_json["pbrMetallicRoughness"]
+		if pbr.has("baseColorFactor"):
+			var f: Array = pbr["baseColorFactor"]
+			mtoon.base_color = Color(f[0], f[1], f[2], f[3])
+		if pbr.has("baseColorTexture"):
+			mtoon.base_color_texture = _resolve_gltf_texture(pbr["baseColorTexture"], state)
+
+	if mat_json.has("emissiveFactor"):
+		var e: Array = mat_json["emissiveFactor"]
+		mtoon.emissive_color = Color(e[0], e[1], e[2])
+
+	if mat_json.has("emissiveTexture"):
+		mtoon.emissive_texture = _resolve_gltf_texture(mat_json["emissiveTexture"], state)
+
+	# Alpha mode
+	var alpha_str: String = mat_json.get("alphaMode", "OPAQUE")
+	match alpha_str:
+		"MASK":
+			mtoon.alpha_mode = MtoonMaterial.AlphaMode.MASK
+		"BLEND":
+			mtoon.alpha_mode = MtoonMaterial.AlphaMode.BLEND
+		_:
+			mtoon.alpha_mode = MtoonMaterial.AlphaMode.OPAQUE
+
+	mtoon.alpha_cutoff = mat_json.get("alphaCutoff", 0.5)
+	mtoon.double_sided = mat_json.get("doubleSided", false)
+
+	# --- VRMC_materials_mtoon extension fields ---
+	# Shade
+	if ext.has("shadeColorFactor"):
+		var s: Array = ext["shadeColorFactor"]
+		mtoon.shade_color = Color(s[0], s[1], s[2])
+
+	if ext.has("shadeMultiplyTexture"):
+		mtoon.shade_multiply_texture = _resolve_gltf_texture(ext["shadeMultiplyTexture"], state)
+
+	# Shading ramp
+	mtoon.shading_shift_factor = ext.get("shadingShiftFactor", 0.0)
+	mtoon.shading_toony_factor = ext.get("shadingToonyFactor", 0.9)
+
+	if ext.has("shadingShiftTexture"):
+		mtoon.shading_shift_texture = _resolve_gltf_texture(ext["shadingShiftTexture"], state)
+
+	# GI
+	mtoon.gi_equalization_factor = ext.get("giEqualizationFactor", 0.9)
+
+	# MatCap
+	if ext.has("matcapFactor"):
+		var m: Array = ext["matcapFactor"]
+		mtoon.matcap_factor = Color(m[0], m[1], m[2])
+
+	if ext.has("matcapTexture"):
+		mtoon.matcap_texture = _resolve_gltf_texture(ext["matcapTexture"], state)
+
+	# Rim
+	if ext.has("parametricRimColorFactor"):
+		var r: Array = ext["parametricRimColorFactor"]
+		mtoon.rim_color = Color(r[0], r[1], r[2])
+
+	mtoon.rim_fresnel_power = ext.get("parametricRimFresnelPowerFactor", 5.0)
+	mtoon.rim_lift = ext.get("parametricRimLiftFactor", 0.0)
+	mtoon.rim_lighting_mix = ext.get("rimLightingMixFactor", 1.0)
+
+	if ext.has("rimMultiplyTexture"):
+		mtoon.rim_multiply_texture = _resolve_gltf_texture(ext["rimMultiplyTexture"], state)
+
+	# Outline
+	var outline_mode_str: String = ext.get("outlineWidthMode", "none")
+	match outline_mode_str:
+		"worldCoordinates":
+			mtoon.outline_width_mode = MtoonMaterial.OutlineWidthMode.WORLD_COORDINATES
+		"screenCoordinates":
+			mtoon.outline_width_mode = MtoonMaterial.OutlineWidthMode.SCREEN_COORDINATES
+		_:
+			mtoon.outline_width_mode = MtoonMaterial.OutlineWidthMode.NONE
+			mtoon.outline_enabled = false
+
+	mtoon.outline_width = ext.get("outlineWidthFactor", 0.0)
+
+	if ext.has("outlineWidthMultiplyTexture"):
+		mtoon.outline_width_multiply_texture = _resolve_gltf_texture(ext["outlineWidthMultiplyTexture"], state)
+
+	if ext.has("outlineColorFactor"):
+		var o: Array = ext["outlineColorFactor"]
+		mtoon.outline_color = Color(o[0], o[1], o[2])
+
+	mtoon.outline_lighting_mix = ext.get("outlineLightingMixFactor", 1.0)
+
+	# UV Animation
+	mtoon.uv_animation_scroll_x_speed = ext.get("uvAnimationScrollXSpeedFactor", 0.0)
+	mtoon.uv_animation_scroll_y_speed = ext.get("uvAnimationScrollYSpeedFactor", 0.0)
+	mtoon.uv_animation_rotation_speed = ext.get("uvAnimationRotationSpeedFactor", 0.0)
+
+	if ext.has("uvAnimationMaskTexture"):
+		mtoon.uv_animation_mask_texture = _resolve_gltf_texture(ext["uvAnimationMaskTexture"], state)
+
+	return mtoon
+
+
+# ---------------------------------------------------------------------------
+# Texture Helpers
+# ---------------------------------------------------------------------------
+
+## Resolves a glTF textureInfo object (e.g. {"index": 3}) to a Godot Texture2D.
+func _resolve_gltf_texture(texture_info: Dictionary, state: GLTFState) -> Texture2D:
+	var tex_index: int = texture_info.get("index", -1)
+	if tex_index < 0:
+		return null
+
+	var gltf_textures: Array[GLTFTexture] = state.get_textures()
+	if tex_index >= gltf_textures.size():
+		return null
+
+	var gltf_tex: GLTFTexture = gltf_textures[tex_index]
+	var img_index: int = gltf_tex.src_image
+	if img_index < 0:
+		return null
+
+	var images: Array[Texture2D] = state.get_images()
+	if img_index >= images.size():
+		return null
+
+	return images[img_index]
+
+
+# ---------------------------------------------------------------------------
+# Scene Tree Material Replacement
+# ---------------------------------------------------------------------------
+
+## Walks all MeshInstance3D nodes and replaces surface materials whose glTF
+## material index has an MToon replacement.
+func _replace_materials_on_meshes(
+		root: Node,
+		gltf_materials: Array,
+		replacement_map: Dictionary[int, ShaderMaterial],
+) -> void:
+	var mesh_instances: Array[Node] = root.find_children("", "MeshInstance3D", true, false)
+	for node: Node in mesh_instances:
+		var mesh_inst: MeshInstance3D = node as MeshInstance3D
+		if mesh_inst == null:
+			continue
+
+		for surface_idx: int in range(mesh_inst.get_surface_override_material_count()):
+			var current_mat: Material = mesh_inst.get_active_material(surface_idx)
+			if current_mat == null:
+				continue
+
+			# Find which glTF material index this surface corresponds to.
+			var mat_idx: int = _find_material_index(current_mat, gltf_materials)
+			if mat_idx >= 0 and replacement_map.has(mat_idx):
+				mesh_inst.set_surface_override_material(surface_idx, replacement_map[mat_idx])
+
+
+## Finds the index of a material in the glTF materials array by reference equality
+## or by matching resource_name.
+func _find_material_index(mat: Material, gltf_materials: Array) -> int:
+	for i: int in range(gltf_materials.size()):
+		var gltf_mat: Material = gltf_materials[i] as Material
+		if gltf_mat == null:
+			continue
+		if gltf_mat == mat:
+			return i
+		if gltf_mat.resource_name == mat.resource_name and not mat.resource_name.is_empty():
+			return i
+	return -1

@@ -2,12 +2,22 @@ shader_type spatial;
 
 /*
  * VRMC_materials_mtoon 1.0 Outline Implementation for Godot 4.x
- * Step 8: Correcting Shadow Sync
+ * Step 9: Rendering Sync (Alpha Mode & Cutout)
  */
 
 render_mode blend_mix, depth_draw_always, cull_front;
 
 // --- Uniforms ---
+
+group_uniforms rendering;
+// 0: Opaque, 1: Mask (Cutout), 2: Blend (Transparent)
+uniform int alpha_mode : hint_range(0, 2) = 2;
+uniform float alpha_cutoff : hint_range(0.0, 1.0) = 0.5;
+
+group_uniforms base_color_lit;
+// Needed to sync alpha cutout with the body
+uniform vec4 base_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
+uniform sampler2D base_color_texture : source_color, hint_default_white;
 
 group_uniforms outline;
 uniform int outline_width_mode : hint_range(0, 2) = 1;
@@ -33,7 +43,7 @@ group_uniforms;
 varying vec2 v_animated_uv;
 
 void vertex() {
-	// --- UV Animation Logic (Vertex Stage) ---
+	// --- UV Animation ---
 	float anim_mask = textureLod(uv_animation_mask_texture, UV, 0.0).b;
 	float rotation = uv_animation_rotation_speed * TIME * anim_mask;
 	float cos_rot = cos(rotation);
@@ -43,23 +53,25 @@ void vertex() {
 
 	v_animated_uv = animated_uv;
 
-	// Sample the G channel of the multiply texture
+	// Outline Width
 	float width_mask = textureLod(outline_width_multiply_texture, animated_uv, 0.0).g;
 	float final_width = outline_width * width_mask;
 	
-	if (outline_width_mode == 0) {
-		VERTEX = vec3(0.0);
-	}
-	else if (outline_width_mode == 1) {
+	if (outline_width_mode == 1) {
+		// World-space: expand along normals in object space. Unit = metres.
 		VERTEX += NORMAL * final_width;
-	} 
-	else if (outline_width_mode == 2) {
+	} else if (outline_width_mode == 2) {
+		// Screen-space: expand in clip space so width is constant on screen.
+		// Unit = ratio of screen height (e.g. 0.01 = 1% of screen height).
 		vec4 clip_pos = PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
 		vec3 clip_normal = mat3(PROJECTION_MATRIX * MODELVIEW_MATRIX) * NORMAL;
+		// aspect = width/height; we DIVIDE x to compensate so the outline
+		// stays equally thick in pixels regardless of screen aspect ratio.
 		float aspect = PROJECTION_MATRIX[1][1] / PROJECTION_MATRIX[0][0];
 		vec2 offset = normalize(clip_normal.xy);
-		offset.x *= aspect; 
-		clip_pos.xy += offset * final_width * clip_pos.w * 0.01;
+		offset.x /= aspect;
+		// Multiply by 2.0 because NDC range is [-1, 1] (total = 2 units).
+		clip_pos.xy += offset * final_width * 2.0 * clip_pos.w;
 		POSITION = clip_pos;
 	}
 	
@@ -67,28 +79,38 @@ void vertex() {
 }
 
 void fragment() {
+	// NONE mode: discard every pixel. This is more reliable than collapsing
+	// vertices to vec3(0) in vertex(), which is undefined behaviour on some GPUs.
+	if (outline_width_mode == 0) {
+		discard;
+	}
+
+	// --- Alpha Clipping Sync ---
+	vec4 body_tex = texture(base_color_texture, v_animated_uv);
+	float alpha = body_tex.a * base_color.a;
+
+	if (alpha_mode == 1) { // Mask
+		if (alpha < alpha_cutoff) {
+			discard;
+		}
+	} else if (alpha_mode == 2) { // Transparent
+		// Outlines are usually opaque shells, but we can modulate their alpha too
+		ALPHA = alpha;
+	}
+
 	ALBEDO = outline_color;
 }
 
 void light() {
-	// 1. Calculate NdotL
 	float NdotL = dot(NORMAL, LIGHT);
-	
-	// 2. Toon Threshold (Sync with base pass)
 	float shift_tex = texture(shading_shift_texture, v_animated_uv).r;
 	float shading = NdotL + shading_shift_factor + shift_tex;
 	
 	float a = -1.0 + shading_toony_factor;
 	float b = 1.0 - shading_toony_factor;
 	float shading_factor = clamp((shading - a) / max(b - a, 0.0001), 0.0, 1.0);
-	
-	// 3. Self-Shadowing (ATTENUATION)
 	float final_shading = shading_factor * ATTENUATION;
-	
-	// 4. Apply Outline Lighting Mix
-	// We mix between "always 1.0" and "follows shading factor"
 	float light_multiplier = mix(1.0, final_shading, outline_lighting_mix);
 	
-	// 5. Final Accumulation
 	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * ALBEDO * light_multiplier;
 }

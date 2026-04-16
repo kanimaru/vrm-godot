@@ -5,6 +5,19 @@
 [ext_resource type="Shader" uid="uid://di6l2bo87wppk" path="res://addons/vrm/shaders/mtoon.gdshader" id="3_o4y4p"]
 [ext_resource type="Texture2D" uid="uid://dcjs8u2njqdnc" path="res://assets/dove/Dove_Merlin.png" id="4_54lf3"]
 
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_whhtk"]
+sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
+ground_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
+
+[sub_resource type="Sky" id="Sky_nmre3"]
+sky_material = SubResource("ProceduralSkyMaterial_whhtk")
+
+[sub_resource type="Environment" id="Environment_o4y4p"]
+background_mode = 2
+sky = SubResource("Sky_nmre3")
+tonemap_mode = 2
+glow_enabled = true
+
 [sub_resource type="Gradient" id="Gradient_jyjq5"]
 offsets = PackedFloat32Array(1)
 colors = PackedColorArray(1, 1, 1, 1)
@@ -15,13 +28,16 @@ gradient = SubResource("Gradient_jyjq5")
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_1c44q"]
 render_priority = 0
 shader = ExtResource("2_nmre3")
+shader_parameter/alpha_mode = 2
+shader_parameter/alpha_cutoff = 0.5
+shader_parameter/base_color = Color(1, 1, 1, 1)
 shader_parameter/outline_width_mode = 1
-shader_parameter/outline_width = 1.0
+shader_parameter/outline_width = 0.2050000097375
 shader_parameter/outline_width_multiply_texture = SubResource("GradientTexture2D_nov2s")
 shader_parameter/outline_color = Color(0, 0, 0, 1)
-shader_parameter/outline_lighting_mix = 1.0
-shader_parameter/shading_shift_factor = 0.8750000890625
-shader_parameter/shading_toony_factor = 0.570000027075
+shader_parameter/outline_lighting_mix = 0.50000002375
+shader_parameter/shading_shift_factor = 0.0
+shader_parameter/shading_toony_factor = 0.9
 shader_parameter/uv_animation_scroll_x_speed = 0.0
 shader_parameter/uv_animation_scroll_y_speed = 0.0
 shader_parameter/uv_animation_rotation_speed = 0.0
@@ -30,12 +46,16 @@ shader_parameter/uv_animation_rotation_speed = 0.0
 render_priority = 0
 next_pass = SubResource("ShaderMaterial_1c44q")
 shader = ExtResource("3_o4y4p")
+shader_parameter/alpha_mode = 2
+shader_parameter/alpha_cutoff = 0.5
+shader_parameter/double_sided = false
 shader_parameter/base_color = Color(1, 1, 1, 1)
 shader_parameter/base_color_texture = ExtResource("4_54lf3")
-shader_parameter/shade_color = Color(0.4506483, 0.4506483, 0.45064825, 1)
+shader_parameter/shade_color = Color(0.7708395, 0.77083945, 0.77083945, 1)
 shader_parameter/shade_multiply_texture = ExtResource("4_54lf3")
 shader_parameter/shading_shift_factor = -0.5729999797175
 shader_parameter/shading_toony_factor = 0.970000046075
+shader_parameter/gi_equalization_factor = 0.9
 shader_parameter/emissive_color = Color(0, 0, 0, 1)
 shader_parameter/rim_color = Color(8.278489e-06, 0.8466307, 0.88457584, 1)
 shader_parameter/rim_fresnel_power = 3.0000001425
@@ -43,22 +63,27 @@ shader_parameter/rim_lift = 0.0
 shader_parameter/rim_lighting_mix = 0.5350000254125
 shader_parameter/matcap_factor = Color(1, 1, 1, 1)
 shader_parameter/uv_animation_scroll_x_speed = 0.0
-shader_parameter/uv_animation_scroll_y_speed = 4.7500000022182576e-07
+shader_parameter/uv_animation_scroll_y_speed = 4.750000002218258e-07
 shader_parameter/uv_animation_rotation_speed = 0.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_o2kwe"]
 render_priority = 0
 shader = ExtResource("3_o4y4p")
+shader_parameter/alpha_mode = 1
+shader_parameter/alpha_cutoff = 0.8310000394725
+shader_parameter/double_sided = true
 shader_parameter/base_color = Color(1, 1, 1, 1)
 shader_parameter/base_color_texture = ExtResource("4_54lf3")
-shader_parameter/shade_color = Color(1, 1, 1, 1)
-shader_parameter/shading_shift_factor = 0.44100006844749995
-shader_parameter/shading_toony_factor = 0.8710000413725
+shader_parameter/shade_color = Color(0.6666667, 0.6666667, 0.6666667, 1)
+shader_parameter/shade_multiply_texture = ExtResource("4_54lf3")
+shader_parameter/shading_shift_factor = -0.19999996200000003
+shader_parameter/shading_toony_factor = 0.9
+shader_parameter/gi_equalization_factor = 0.9
 shader_parameter/emissive_color = Color(0, 0, 0, 1)
-shader_parameter/rim_color = Color(0.4148778, 0.79387635, 0.99999994, 1)
-shader_parameter/rim_fresnel_power = 10.000000475
-shader_parameter/rim_lift = -0.38499997078750003
-shader_parameter/rim_lighting_mix = 0.250000011875
+shader_parameter/rim_color = Color(0, 0, 0, 1)
+shader_parameter/rim_fresnel_power = 1.0000000475
+shader_parameter/rim_lift = 1.0
+shader_parameter/rim_lighting_mix = 0.0
 shader_parameter/matcap_factor = Color(1, 1, 1, 1)
 shader_parameter/uv_animation_scroll_x_speed = 0.0
 shader_parameter/uv_animation_scroll_y_speed = 0.0
@@ -107,9 +132,18 @@ metadata/extras = {
 
 [node name="Node3D" type="Node3D" unique_id=1108490312]
 
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1507890251]
+environment = SubResource("Environment_o4y4p")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1956636789]
+transform = Transform3D(-0.8660254, -0.4330127, 0.25000006, 0.37221992, -0.8921746, -0.25588426, 0.33384478, -0.12854725, 0.93382186, 0, -0.8249644, 5.8408856)
+shadow_enabled = true
+
 [node name="Dove" parent="." unique_id=1302626558 instance=ExtResource("1_whhtk")]
 
 [node name="Birb" parent="Dove/Skeleton3D" parent_id_path=PackedInt32Array(1302626558, 653627837) index="0" unique_id=477529613]
 mesh = SubResource("ArrayMesh_cbnq0")
+
+[node name="Node" type="Node" parent="Dove" unique_id=612022]
 
 [editable path="Dove"]

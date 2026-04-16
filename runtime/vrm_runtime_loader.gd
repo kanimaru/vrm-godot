@@ -7,16 +7,21 @@ extends Node3D
 
 const CONFIG_PATH: String = "user://vrm_recents.cfg"
 const MAX_RECENTS: int = 10
+const MTOON_SHADER_PATH := "res://addons/vrm/shaders/mtoon.gdshader"
+const MTOON_OUTLINE_SHADER_PATH := "res://addons/vrm/shaders/mtoon_outline.gdshader"
 
 var _recents: Array[String] = []
 var _current_model: Node = null
 var _expression_controller: Node = null
+## Maps each body ShaderMaterial to its generated outline ShaderMaterial.
+var _mtoon_outline_materials: Dictionary[ShaderMaterial, ShaderMaterial] = {}
 
 @onready var _open_button: Button = $UI/LeftPanel/MarginContainer/VBoxContainer/OpenButton
 @onready var _file_dialog: FileDialog = $UI/FileDialog
 @onready var _recents_list: VBoxContainer = $UI/LeftPanel/MarginContainer/VBoxContainer/ScrollContainer/RecentsList
 @onready var _status_label: Label = $UI/LeftPanel/MarginContainer/VBoxContainer/StatusLabel
 @onready var _model_anchor: Node3D = $ModelAnchor
+@onready var _world_env: WorldEnvironment = $WorldEnvironment
 
 @onready var _no_model_label: Label = $UI/RightPanel/MarginContainer/VBoxContainer/NoModelLabel
 @onready var _exp_scroll: ScrollContainer = $UI/RightPanel/MarginContainer/VBoxContainer/ExpScroll
@@ -26,17 +31,22 @@ var _expression_controller: Node = null
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
-		
+
 	# Connect signals
 	_open_button.pressed.connect(_on_open_vrm_pressed)
 	_file_dialog.file_selected.connect(_on_file_dialog_file_selected)
-	
+
 	# Register extensions for runtime loading
 	_register_vrm_extensions()
-	
+
 	_load_recents()
 	_update_recents_ui()
 	_status_label.text = "Select a VRM model to load."
+
+
+func _process(_delta: float) -> void:
+	# Reserved for future per-frame GI / outline updates.
+	pass
 
 
 func load_vrm(path: String) -> void:
@@ -51,6 +61,7 @@ func load_vrm(path: String) -> void:
 		_current_model.queue_free()
 		_current_model = null
 		_expression_controller = null
+		_mtoon_outline_materials.clear()
 		
 	# Setup GLTF document and state
 	var gltf: GLTFDocument = GLTFDocument.new()
@@ -68,11 +79,14 @@ func load_vrm(path: String) -> void:
 		
 	_current_model = generated_scene
 	_model_anchor.add_child(_current_model)
-	
+
+	# Apply MToon outline pass to every qualifying mesh surface.
+	_setup_mtoon_outlines(_current_model)
+
 	# Find expression controller
 	_expression_controller = _find_expression_controller(_current_model)
 	_update_expressions_ui()
-	
+
 	_add_to_recents(path)
 	_status_label.text = "Successfully loaded: " + path.get_file()
 
@@ -80,15 +94,92 @@ func load_vrm(path: String) -> void:
 func _register_vrm_extensions() -> void:
 	var vrm0_ext_path := "res://addons/vrm/vrm0/vrm0_extension.gd"
 	var vrm1_ext_path := "res://addons/vrm/vrm1/vrm1_extension.gd"
-	
+
 	if not FileAccess.file_exists(vrm0_ext_path) or not FileAccess.file_exists(vrm1_ext_path):
 		return
-		
+
 	var vrm0_ext = load(vrm0_ext_path).new()
 	var vrm1_ext = load(vrm1_ext_path).new()
-	
+
 	GLTFDocument.register_gltf_document_extension(vrm0_ext, true)
 	GLTFDocument.register_gltf_document_extension(vrm1_ext, true)
+
+
+## Walks the loaded model tree and attaches an outline next_pass to every
+## MeshInstance3D surface that uses the MToon shader.
+func _setup_mtoon_outlines(root: Node) -> void:
+	_mtoon_outline_materials.clear()
+	_crawl_for_mtoon(root)
+
+
+func _crawl_for_mtoon(node: Node) -> void:
+	if node is MeshInstance3D:
+		_apply_outlines_to_mesh(node as MeshInstance3D)
+	for child: Node in node.get_children():
+		_crawl_for_mtoon(child)
+
+
+func _apply_outlines_to_mesh(mesh_instance: MeshInstance3D) -> void:
+	if mesh_instance.mesh == null:
+		return
+
+	for i: int in range(mesh_instance.mesh.get_surface_count()):
+		# Prefer surface override material, fall back to the mesh resource's own material.
+		var body_mat: Material = mesh_instance.get_surface_override_material(i)
+		if body_mat == null:
+			body_mat = mesh_instance.mesh.surface_get_material(i)
+
+		if not _is_mtoon(body_mat):
+			continue
+
+		var shader_body := body_mat as ShaderMaterial
+
+		# If the material lives on the shared Mesh resource (not an override),
+		# we must duplicate it before setting next_pass to avoid mutating a
+		# resource that may be shared with other MeshInstances.
+		if mesh_instance.get_surface_override_material(i) == null:
+			shader_body = shader_body.duplicate() as ShaderMaterial
+			mesh_instance.set_surface_override_material(i, shader_body)
+
+		var outline: ShaderMaterial = _build_outline_from(shader_body)
+		shader_body.next_pass = outline
+		_mtoon_outline_materials[shader_body] = outline
+
+
+func _is_mtoon(mat: Material) -> bool:
+	if not (mat is ShaderMaterial):
+		return false
+	var sm := mat as ShaderMaterial
+	return sm.shader != null and sm.shader.resource_path == MTOON_SHADER_PATH
+
+
+## Creates an outline ShaderMaterial and pre-populates the parameters
+## that must stay in sync with the body material.
+func _build_outline_from(body: ShaderMaterial) -> ShaderMaterial:
+	var outline := ShaderMaterial.new()
+	outline.shader = load(MTOON_OUTLINE_SHADER_PATH)
+
+	# These parameters are identical on both passes.
+	const SHARED_PARAMS: Array[StringName] = [
+		&"alpha_mode",
+		&"alpha_cutoff",
+		&"base_color",
+		&"base_color_texture",
+		&"shading_shift_factor",
+		&"shading_shift_texture",
+		&"shading_toony_factor",
+		&"uv_animation_mask_texture",
+		&"uv_animation_scroll_x_speed",
+		&"uv_animation_scroll_y_speed",
+		&"uv_animation_rotation_speed",
+	]
+
+	for param: StringName in SHARED_PARAMS:
+		var value: Variant = body.get_shader_parameter(param)
+		if value != null:
+			outline.set_shader_parameter(param, value)
+
+	return outline
 
 
 func _find_expression_controller(root: Node) -> Node:
