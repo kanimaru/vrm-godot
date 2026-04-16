@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://c44hxivuen1pk"]
 
 [ext_resource type="Script" uid="uid://blvsirfubnhr8" path="res://runtime/vrm_runtime_loader.gd" id="1_loader"]
+[ext_resource type="Script" uid="uid://de01t4tr8jp7t" path="res://addons/vrm/nodes/vrm_editor_camera.gd" id="2_keiwm"]
 
 [sub_resource type="Environment" id="Environment_0em4h"]
 background_mode = 1
@@ -21,6 +22,7 @@ environment = SubResource("Environment_0em4h")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1602594506]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 2)
+script = ExtResource("2_keiwm")
 
 [node name="ModelAnchor" type="Node3D" parent="." unique_id=1252560870]
 
