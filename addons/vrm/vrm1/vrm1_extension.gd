@@ -232,24 +232,29 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		var gltf_materials: Array = state.get_materials()
 		var active_mtoons: Array[MtoonMaterial] = []
 
-		# Build mapping: original StandardMaterial3D -> (MtoonMaterial, body ShaderMaterial)
-		var replacement_map: Dictionary[int, ShaderMaterial] = {}
+		# Build a name -> ShaderMaterial map for scene-tree lookup.
+		# The surface material resource_name on baked ArrayMesh surfaces matches
+		# the resource_name of the corresponding glTF material.
+		var name_to_shader: Dictionary[String, ShaderMaterial] = {}
 		for mat_idx: int in range(mtoon_configs.size()):
 			var mtoon: MtoonMaterial = mtoon_configs[mat_idx] as MtoonMaterial
 			if mtoon == null:
 				continue
 
-			var body_mat := ShaderMaterial.new()
+			var body_mat: ShaderMaterial = ShaderMaterial.new()
 			body_mat.shader = MtoonMaterial.MTOON_SHADER
-			var outline_mat := ShaderMaterial.new()
+			var outline_mat : ShaderMaterial = ShaderMaterial.new()
 			outline_mat.shader = MtoonMaterial.MTOON_OUTLINE_SHADER
 			mtoon.bind(body_mat, outline_mat)
 
-			replacement_map[mat_idx] = body_mat
+			# Map by material name so the scene-tree walker can look it up.
+			var gltf_mat: Material = gltf_materials[mat_idx] as Material if mat_idx < gltf_materials.size() else null
+			if gltf_mat != null and not gltf_mat.resource_name.is_empty():
+				name_to_shader[gltf_mat.resource_name] = body_mat
 			active_mtoons.append(mtoon)
 
-		if not active_mtoons.is_empty():
-			_replace_materials_on_meshes(root, gltf_materials, replacement_map)
+		if not active_mtoons.is_empty() and not name_to_shader.is_empty():
+			_apply_materials_to_scene_tree(root, name_to_shader)
 
 			var mtoon_controller_script := preload("../nodes/mtoon_controller.gd")
 			var controller: Node3D = mtoon_controller_script.new()
@@ -400,39 +405,33 @@ func _resolve_gltf_texture(texture_info: Dictionary, state: GLTFState) -> Textur
 # Scene Tree Material Replacement
 # ---------------------------------------------------------------------------
 
-## Walks all MeshInstance3D nodes and replaces surface materials whose glTF
-## material index has an MToon replacement.
-func _replace_materials_on_meshes(
-		root: Node,
-		gltf_materials: Array,
-		replacement_map: Dictionary[int, ShaderMaterial],
+## Recursively walks the scene tree from root.
+## During _import_post, nodes are ImporterMeshInstance3D with an ImporterMesh.
+## ImporterMesh uses get_surface_material() / set_surface_material(), which
+## bakes the replacement directly into the final ArrayMesh.
+func _apply_materials_to_scene_tree(
+		node: Node,
+		name_to_shader: Dictionary[String, ShaderMaterial],
 ) -> void:
-	var mesh_instances: Array[Node] = root.find_children("", "MeshInstance3D", true, false)
-	for node: Node in mesh_instances:
+	if node is ImporterMeshInstance3D:
+		var importer_inst: ImporterMeshInstance3D = node as ImporterMeshInstance3D
+		var importer_mesh: ImporterMesh = importer_inst.mesh
+		if importer_mesh != null:
+			for i: int in range(importer_mesh.get_surface_count()):
+				var surf_mat: Material = importer_mesh.get_surface_material(i)
+				if surf_mat == null or surf_mat.resource_name.is_empty():
+					continue
+				if name_to_shader.has(surf_mat.resource_name):
+					importer_mesh.set_surface_material(i, name_to_shader[surf_mat.resource_name])
+	elif node is MeshInstance3D:
 		var mesh_inst: MeshInstance3D = node as MeshInstance3D
-		if mesh_inst == null:
-			continue
+		if mesh_inst.mesh != null:
+			for i: int in range(mesh_inst.mesh.get_surface_count()):
+				var surf_mat: Material = mesh_inst.mesh.surface_get_material(i)
+				if surf_mat == null or surf_mat.resource_name.is_empty():
+					continue
+				if name_to_shader.has(surf_mat.resource_name):
+					mesh_inst.set_surface_override_material(i, name_to_shader[surf_mat.resource_name])
 
-		for surface_idx: int in range(mesh_inst.get_surface_override_material_count()):
-			var current_mat: Material = mesh_inst.get_active_material(surface_idx)
-			if current_mat == null:
-				continue
-
-			# Find which glTF material index this surface corresponds to.
-			var mat_idx: int = _find_material_index(current_mat, gltf_materials)
-			if mat_idx >= 0 and replacement_map.has(mat_idx):
-				mesh_inst.set_surface_override_material(surface_idx, replacement_map[mat_idx])
-
-
-## Finds the index of a material in the glTF materials array by reference equality
-## or by matching resource_name.
-func _find_material_index(mat: Material, gltf_materials: Array) -> int:
-	for i: int in range(gltf_materials.size()):
-		var gltf_mat: Material = gltf_materials[i] as Material
-		if gltf_mat == null:
-			continue
-		if gltf_mat == mat:
-			return i
-		if gltf_mat.resource_name == mat.resource_name and not mat.resource_name.is_empty():
-			return i
-	return -1
+	for child: Node in node.get_children():
+		_apply_materials_to_scene_tree(child, name_to_shader)

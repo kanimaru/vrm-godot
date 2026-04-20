@@ -96,6 +96,16 @@ Organize script content in this specific order:
 - Use unique names for nodes referenced in scripts.
 - Declare local variables as close as possible to their first use.
 
+## 9. GLTF Import Pipeline (GLTFDocumentExtension)
+
+- **Node Types**: During the import process (`_import_post`, etc.), mesh nodes are often `ImporterMeshInstance3D` rather than the final `MeshInstance3D`.
+- **Handling both**: When walking the scene tree during import, always check for both types:
+  ```gdscript
+  if node is MeshInstance3D or node is ImporterMeshInstance3D:
+  	# Handle mesh instance
+  ```
+- **Mesh Data**: Be aware that `ImporterMeshInstance3D` uses `ImporterMesh` which has a slightly different API than `ArrayMesh`.
+
 ## 8. Properties with Setters/Getters
 
 - In Godot 4, properties with custom inline `set(v)` or `get()` must be placed in **indented blocks**. Single-line/inline setters without indents cause syntax errors.
