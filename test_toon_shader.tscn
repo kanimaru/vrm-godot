@@ -24,6 +24,6 @@ environment = SubResource("Environment_o4y4p")
 transform = Transform3D(-0.8660254, -0.4330127, 0.25000006, 0.37221992, -0.8921746, -0.25588426, 0.33384478, -0.12854725, 0.93382186, 0, -0.8249644, 5.8408856)
 shadow_enabled = true
 
-[node name="Dove" parent="." unique_id=1125052587 instance=ExtResource("1_whhtk")]
+[node name="Dove" parent="." unique_id=2005966409 instance=ExtResource("1_whhtk")]
 
 [editable path="Dove"]

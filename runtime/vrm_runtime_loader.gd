@@ -132,7 +132,7 @@ func _apply_outlines_to_mesh(mesh_instance: MeshInstance3D) -> void:
 		if not _is_mtoon(body_mat):
 			continue
 
-		var shader_body := body_mat as ShaderMaterial
+		var shader_body: ShaderMaterial = body_mat as ShaderMaterial
 
 		# If the material lives on the shared Mesh resource (not an override),
 		# we must duplicate it before setting next_pass to avoid mutating a
