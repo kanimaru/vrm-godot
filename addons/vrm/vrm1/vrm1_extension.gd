@@ -4,6 +4,8 @@ class_name Vrm1Extension
 
 ## Handles VRM 1.0 avatars (VRMC_vrm, VRMC_materials_mtoon, VRMC_springBone).
 
+const VrmMtoonBuilder = preload("../common/vrm_mtoon_builder.gd")
+
 
 func _get_supported_extensions() -> PackedStringArray:
 	return PackedStringArray([
@@ -48,15 +50,15 @@ func _import_post_parse(state: GLTFState) -> Error:
 
 	state.set_additional_data("vrm1", vrm_top_level)
 
-	# Parse per-material VRMC_materials_mtoon extensions
-	var mtoon_configs: Array[MtoonMaterial] = []
+	# Parse per-material VRMC_materials_mtoon extensions.
+	# Produces an Array of Dictionaries (or nulls for non-MToon materials).
+	var mtoon_configs: Array = []
 	if json.has("materials"):
 		var gltf_materials: Array = json["materials"]
 		for mat_idx: int in range(gltf_materials.size()):
 			var mat_json: Dictionary = gltf_materials[mat_idx]
 			if mat_json.has("extensions") and mat_json["extensions"].has("VRMC_materials_mtoon"):
-				var mtoon: MtoonMaterial = _parse_vrm1_mtoon(mat_json, state)
-				mtoon_configs.append(mtoon)
+				mtoon_configs.append(_parse_vrm1_mtoon(mat_json, state))
 			else:
 				mtoon_configs.append(null)
 	state.set_additional_data("vrm1_mtoon", mtoon_configs)
@@ -230,38 +232,28 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	var mtoon_configs: Variant = state.get_additional_data("vrm1_mtoon")
 	if mtoon_configs is Array:
 		var gltf_materials: Array = state.get_materials()
-		var active_mtoons: Array[MtoonMaterial] = []
 
 		# Build a name -> ShaderMaterial map for scene-tree lookup.
 		# The surface material resource_name on baked ArrayMesh surfaces matches
 		# the resource_name of the corresponding glTF material.
 		var name_to_shader: Dictionary[String, ShaderMaterial] = {}
 		for mat_idx: int in range(mtoon_configs.size()):
-			var mtoon: MtoonMaterial = mtoon_configs[mat_idx] as MtoonMaterial
-			if mtoon == null:
+			var params: Variant = mtoon_configs[mat_idx]
+			if not (params is Dictionary):
 				continue
 
-			var body_mat: ShaderMaterial = ShaderMaterial.new()
-			body_mat.shader = MtoonMaterial.MTOON_SHADER
-			var outline_mat : ShaderMaterial = ShaderMaterial.new()
-			outline_mat.shader = MtoonMaterial.MTOON_OUTLINE_SHADER
-			mtoon.bind(body_mat, outline_mat)
+			var body_mat: ShaderMaterial = VrmMtoonBuilder.build_body(params)
+			var outline_mat: ShaderMaterial = VrmMtoonBuilder.build_outline(params)
+			if outline_mat != null:
+				body_mat.next_pass = outline_mat
 
-			# Map by material name so the scene-tree walker can look it up.
+			# Map by glTF material name so the scene-tree walker can look it up.
 			var gltf_mat: Material = gltf_materials[mat_idx] as Material if mat_idx < gltf_materials.size() else null
 			if gltf_mat != null and not gltf_mat.resource_name.is_empty():
 				name_to_shader[gltf_mat.resource_name] = body_mat
-			active_mtoons.append(mtoon)
 
-		if not active_mtoons.is_empty() and not name_to_shader.is_empty():
+		if not name_to_shader.is_empty():
 			_apply_materials_to_scene_tree(root, name_to_shader)
-
-			var mtoon_controller_script := preload("../nodes/mtoon_controller.gd")
-			var controller: Node3D = mtoon_controller_script.new()
-			controller.name = "MtoonController"
-			controller.set("mtoon_materials", active_mtoons)
-			root.add_child(controller, true)
-			controller.owner = root
 
 	return OK
 
@@ -270,8 +262,10 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 # MToon Parsing — VRM 1.0 (VRMC_materials_mtoon)
 # ---------------------------------------------------------------------------
 
-func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> MtoonMaterial:
-	var mtoon := MtoonMaterial.new()
+## Parses a VRM 1.0 material JSON object (with VRMC_materials_mtoon extension)
+## into a plain Dictionary of parameters that VrmMtoonBuilder understands.
+func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> Dictionary:
+	var p: Dictionary = {}
 	var ext: Dictionary = mat_json["extensions"]["VRMC_materials_mtoon"]
 
 	# --- Standard glTF PBR fields ---
@@ -279,100 +273,112 @@ func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> MtoonMaterial:
 		var pbr: Dictionary = mat_json["pbrMetallicRoughness"]
 		if pbr.has("baseColorFactor"):
 			var f: Array = pbr["baseColorFactor"]
-			mtoon.base_color = Color(f[0], f[1], f[2], f[3])
+			p["base_color"] = Color(f[0], f[1], f[2], f[3])
 		if pbr.has("baseColorTexture"):
-			mtoon.base_color_texture = _resolve_gltf_texture(pbr["baseColorTexture"], state)
+			p["base_color_texture"] = _resolve_gltf_texture(pbr["baseColorTexture"], state)
+			# KHR_texture_transform carries UV tiling/offset for this texture.
+			p["uv_st"] = _resolve_khr_texture_transform(pbr["baseColorTexture"])
 
 	if mat_json.has("emissiveFactor"):
 		var e: Array = mat_json["emissiveFactor"]
-		mtoon.emissive_color = Color(e[0], e[1], e[2])
-
+		p["emissive_color"] = Color(e[0], e[1], e[2])
 	if mat_json.has("emissiveTexture"):
-		mtoon.emissive_texture = _resolve_gltf_texture(mat_json["emissiveTexture"], state)
+		p["emissive_texture"] = _resolve_gltf_texture(mat_json["emissiveTexture"], state)
 
-	# Alpha mode
+	# --- Alpha ---
+	# transparentWithZWrite is a VRM-spec boolean inside the MToon extension that
+	# upgrades a BLEND material to also write to the depth buffer.
 	var alpha_str: String = mat_json.get("alphaMode", "OPAQUE")
+	var transparent_zwrite: bool = ext.get("transparentWithZWrite", false)
 	match alpha_str:
 		"MASK":
-			mtoon.alpha_mode = MtoonMaterial.AlphaMode.MASK
+			p["alpha_mode"] = VrmMtoonBuilder.AlphaMode.MASK
 		"BLEND":
-			mtoon.alpha_mode = MtoonMaterial.AlphaMode.BLEND
+			if transparent_zwrite:
+				p["alpha_mode"] = VrmMtoonBuilder.AlphaMode.BLEND_ZWRITE
+			else:
+				p["alpha_mode"] = VrmMtoonBuilder.AlphaMode.BLEND
 		_:
-			mtoon.alpha_mode = MtoonMaterial.AlphaMode.OPAQUE
-
-	mtoon.alpha_cutoff = mat_json.get("alphaCutoff", 0.5)
-	mtoon.double_sided = mat_json.get("doubleSided", false)
+			p["alpha_mode"] = VrmMtoonBuilder.AlphaMode.OPAQUE
+	p["alpha_cutoff"] = mat_json.get("alphaCutoff", 0.5)
+	p["double_sided"] = mat_json.get("doubleSided", false)
 
 	# --- VRMC_materials_mtoon extension fields ---
 	# Shade
 	if ext.has("shadeColorFactor"):
 		var s: Array = ext["shadeColorFactor"]
-		mtoon.shade_color = Color(s[0], s[1], s[2])
-
+		p["shade_color"] = Color(s[0], s[1], s[2], 1.0)
 	if ext.has("shadeMultiplyTexture"):
-		mtoon.shade_multiply_texture = _resolve_gltf_texture(ext["shadeMultiplyTexture"], state)
+		p["shade_texture"] = _resolve_gltf_texture(ext["shadeMultiplyTexture"], state)
 
 	# Shading ramp
-	mtoon.shading_shift_factor = ext.get("shadingShiftFactor", 0.0)
-	mtoon.shading_toony_factor = ext.get("shadingToonyFactor", 0.9)
-
+	p["shading_shift_factor"] = ext.get("shadingShiftFactor", 0.0)
+	p["shading_toony_factor"] = ext.get("shadingToonyFactor", 0.9)
 	if ext.has("shadingShiftTexture"):
-		mtoon.shading_shift_texture = _resolve_gltf_texture(ext["shadingShiftTexture"], state)
+		p["shading_shift_texture"] = _resolve_gltf_texture(ext["shadingShiftTexture"], state)
+
+	# Normal map (from top-level glTF)
+	if mat_json.has("normalTexture"):
+		p["normal_map_texture"] = _resolve_gltf_texture(mat_json["normalTexture"], state)
+		p["normal_map_scale"] = mat_json["normalTexture"].get("scale", 1.0)
 
 	# GI
-	mtoon.gi_equalization_factor = ext.get("giEqualizationFactor", 0.9)
+	p["indirect_light_intensity"] = ext.get("giEqualizationFactor", 0.9)
 
 	# MatCap
 	if ext.has("matcapFactor"):
 		var m: Array = ext["matcapFactor"]
-		mtoon.matcap_factor = Color(m[0], m[1], m[2])
-
+		p["matcap_color"] = Color(m[0], m[1], m[2])
 	if ext.has("matcapTexture"):
-		mtoon.matcap_texture = _resolve_gltf_texture(ext["matcapTexture"], state)
+		p["matcap_texture"] = _resolve_gltf_texture(ext["matcapTexture"], state)
 
 	# Rim
 	if ext.has("parametricRimColorFactor"):
 		var r: Array = ext["parametricRimColorFactor"]
-		mtoon.rim_color = Color(r[0], r[1], r[2])
-
-	mtoon.rim_fresnel_power = ext.get("parametricRimFresnelPowerFactor", 5.0)
-	mtoon.rim_lift = ext.get("parametricRimLiftFactor", 0.0)
-	mtoon.rim_lighting_mix = ext.get("rimLightingMixFactor", 1.0)
-
+		p["rim_color"] = Color(r[0], r[1], r[2])
+	p["rim_fresnel_power"] = ext.get("parametricRimFresnelPowerFactor", 5.0)
+	p["rim_lift"] = ext.get("parametricRimLiftFactor", 0.0)
+	p["rim_lighting_mix"] = ext.get("rimLightingMixFactor", 1.0)
 	if ext.has("rimMultiplyTexture"):
-		mtoon.rim_multiply_texture = _resolve_gltf_texture(ext["rimMultiplyTexture"], state)
+		p["rim_texture"] = _resolve_gltf_texture(ext["rimMultiplyTexture"], state)
 
 	# Outline
 	var outline_mode_str: String = ext.get("outlineWidthMode", "none")
 	match outline_mode_str:
 		"worldCoordinates":
-			mtoon.outline_width_mode = MtoonMaterial.OutlineWidthMode.WORLD_COORDINATES
+			p["outline_width_mode"] = VrmMtoonBuilder.OutlineWidthMode.WORLD
 		"screenCoordinates":
-			mtoon.outline_width_mode = MtoonMaterial.OutlineWidthMode.SCREEN_COORDINATES
+			p["outline_width_mode"] = VrmMtoonBuilder.OutlineWidthMode.SCREEN
 		_:
-			mtoon.outline_width_mode = MtoonMaterial.OutlineWidthMode.NONE
-			mtoon.outline_enabled = false
-
-	mtoon.outline_width = ext.get("outlineWidthFactor", 0.0)
-
+			p["outline_width_mode"] = VrmMtoonBuilder.OutlineWidthMode.NONE
+	p["outline_width"] = ext.get("outlineWidthFactor", 0.0)
 	if ext.has("outlineWidthMultiplyTexture"):
-		mtoon.outline_width_multiply_texture = _resolve_gltf_texture(ext["outlineWidthMultiplyTexture"], state)
-
+		p["outline_width_texture"] = _resolve_gltf_texture(ext["outlineWidthMultiplyTexture"], state)
 	if ext.has("outlineColorFactor"):
 		var o: Array = ext["outlineColorFactor"]
-		mtoon.outline_color = Color(o[0], o[1], o[2])
-
-	mtoon.outline_lighting_mix = ext.get("outlineLightingMixFactor", 1.0)
+		p["outline_color"] = Color(o[0], o[1], o[2])
+	p["outline_lighting_mix"] = ext.get("outlineLightingMixFactor", 1.0)
 
 	# UV Animation
-	mtoon.uv_animation_scroll_x_speed = ext.get("uvAnimationScrollXSpeedFactor", 0.0)
-	mtoon.uv_animation_scroll_y_speed = ext.get("uvAnimationScrollYSpeedFactor", 0.0)
-	mtoon.uv_animation_rotation_speed = ext.get("uvAnimationRotationSpeedFactor", 0.0)
-
+	p["uv_anim_scroll_x"] = ext.get("uvAnimationScrollXSpeedFactor", 0.0)
+	p["uv_anim_scroll_y"] = ext.get("uvAnimationScrollYSpeedFactor", 0.0)
+	p["uv_anim_rotation"] = ext.get("uvAnimationRotationSpeedFactor", 0.0)
 	if ext.has("uvAnimationMaskTexture"):
-		mtoon.uv_animation_mask_texture = _resolve_gltf_texture(ext["uvAnimationMaskTexture"], state)
+		p["uv_anim_mask_texture"] = _resolve_gltf_texture(ext["uvAnimationMaskTexture"], state)
 
-	return mtoon
+	return p
+
+
+## Extracts UV scale+offset from a KHR_texture_transform extension on a textureInfo dict.
+## Returns a Vector4(scale.x, scale.y, offset.x, offset.y) matching the _MainTex_ST convention.
+func _resolve_khr_texture_transform(texture_info: Dictionary) -> Vector4:
+	var ext_dict: Dictionary = texture_info.get("extensions", {})
+	if not ext_dict.has("KHR_texture_transform"):
+		return Vector4(1.0, 1.0, 0.0, 0.0)
+	var khr: Dictionary = ext_dict["KHR_texture_transform"]
+	var scale: Array = khr.get("scale", [1.0, 1.0])
+	var offset: Array = khr.get("offset", [0.0, 0.0])
+	return Vector4(scale[0], scale[1], offset[0], offset[1])
 
 
 # ---------------------------------------------------------------------------

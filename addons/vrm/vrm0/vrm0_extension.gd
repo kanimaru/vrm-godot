@@ -6,6 +6,7 @@ class_name Vrm0Extension
 
 
 const m_bind_script = preload("structures/vrm0_material_bind.gd")
+const VrmMtoonBuilder = preload("../common/vrm_mtoon_builder.gd")
 
 
 func _get_supported_extensions() -> PackedStringArray:
@@ -50,15 +51,15 @@ func _import_post_parse(state: GLTFState) -> Error:
 
 	state.set_additional_data("vrm0", vrm_top_level)
 
-	# Parse per-material MToon properties from legacy VRM extension
-	var mtoon_configs: Array[MtoonMaterial] = []
+	# Parse per-material MToon properties from legacy VRM extension.
+	# Produces an Array of Dictionaries (or nulls for non-MToon materials).
+	var mtoon_configs: Array = []
 	if vrm_dict.has("materialProperties"):
 		var props_list: Array = vrm_dict["materialProperties"]
 		for mat_idx: int in range(props_list.size()):
 			var props: Dictionary = props_list[mat_idx]
 			if props.get("shader", "") == "VRM/MToon":
-				var mtoon: MtoonMaterial = _parse_vrm0_mtoon(props, state)
-				mtoon_configs.append(mtoon)
+				mtoon_configs.append(_parse_vrm0_mtoon(props, state))
 			else:
 				mtoon_configs.append(null)
 	state.set_additional_data("vrm0_mtoon", mtoon_configs)
@@ -243,38 +244,28 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	var mtoon_configs: Variant = state.get_additional_data("vrm0_mtoon")
 	if mtoon_configs is Array:
 		var gltf_materials: Array = state.get_materials()
-		var active_mtoons: Array[MtoonMaterial] = []
 
 		# Build a name -> ShaderMaterial map for scene-tree lookup.
 		# The surface material resource_name on baked ArrayMesh surfaces matches
 		# the resource_name of the corresponding glTF material.
 		var name_to_shader: Dictionary[String, ShaderMaterial] = {}
 		for mat_idx: int in range(mtoon_configs.size()):
-			var mtoon: MtoonMaterial = mtoon_configs[mat_idx] as MtoonMaterial
-			if mtoon == null:
+			var params: Variant = mtoon_configs[mat_idx]
+			if not (params is Dictionary):
 				continue
 
-			var body_mat := ShaderMaterial.new()
-			body_mat.shader = MtoonMaterial.MTOON_SHADER
-			var outline_mat := ShaderMaterial.new()
-			outline_mat.shader = MtoonMaterial.MTOON_OUTLINE_SHADER
-			mtoon.bind(body_mat, outline_mat)
+			var body_mat: ShaderMaterial = VrmMtoonBuilder.build_body(params)
+			var outline_mat: ShaderMaterial = VrmMtoonBuilder.build_outline(params)
+			if outline_mat != null:
+				body_mat.next_pass = outline_mat
 
-			# Map by material name so the scene-tree walker can look it up.
+			# Map by glTF material name so the scene-tree walker can look it up.
 			var gltf_mat: Material = gltf_materials[mat_idx] as Material if mat_idx < gltf_materials.size() else null
 			if gltf_mat != null and not gltf_mat.resource_name.is_empty():
 				name_to_shader[gltf_mat.resource_name] = body_mat
-			active_mtoons.append(mtoon)
 
-		if not active_mtoons.is_empty() and not name_to_shader.is_empty():
+		if not name_to_shader.is_empty():
 			_apply_materials_to_scene_tree(root, name_to_shader)
-
-			var mtoon_controller_script := preload("../nodes/mtoon_controller.gd")
-			var controller: Node3D = mtoon_controller_script.new()
-			controller.name = "MtoonController"
-			controller.set("mtoon_materials", active_mtoons)
-			root.add_child(controller, true)
-			controller.owner = root
 
 	return OK
 
@@ -283,98 +274,102 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 # MToon Parsing — VRM 0.0 (materialProperties)
 # ---------------------------------------------------------------------------
 
-func _parse_vrm0_mtoon(props: Dictionary, state: GLTFState) -> MtoonMaterial:
-	var mtoon := MtoonMaterial.new()
+## Parses VRM 0.0 materialProperties into a plain Dictionary of parameters
+## that VrmMtoonBuilder understands (using its neutral key names).
+func _parse_vrm0_mtoon(props: Dictionary, state: GLTFState) -> Dictionary:
+	var p: Dictionary = {}
 	var floats: Dictionary = props.get("floatProperties", {})
 	var vectors: Dictionary = props.get("vectorProperties", {})
 	var textures: Dictionary = props.get("textureProperties", {})
 
-	# Rendering / Alpha
+	# --- Rendering / Alpha ---
 	var blend_mode: int = int(floats.get("_BlendMode", 0))
 	match blend_mode:
-		1: # Transparent Cutout
-			mtoon.alpha_mode = MtoonMaterial.AlphaMode.MASK
-		2, 3: # Transparent / TransparentWithZWrite
-			mtoon.alpha_mode = MtoonMaterial.AlphaMode.BLEND
+		1:
+			p["alpha_mode"] = VrmMtoonBuilder.AlphaMode.MASK
+		2:
+			p["alpha_mode"] = VrmMtoonBuilder.AlphaMode.BLEND
+		3:
+			p["alpha_mode"] = VrmMtoonBuilder.AlphaMode.BLEND_ZWRITE
 		_:
-			mtoon.alpha_mode = MtoonMaterial.AlphaMode.OPAQUE
+			p["alpha_mode"] = VrmMtoonBuilder.AlphaMode.OPAQUE
+	p["alpha_cutoff"] = floats.get("_Cutoff", 0.5)
+	# _CullMode: 0=None (double-sided), 2=Back (single-sided)
+	p["double_sided"] = int(floats.get("_CullMode", 2)) == 0
 
-	mtoon.alpha_cutoff = floats.get("_Cutoff", 0.5)
-	
-	var cull_mode: int = int(floats.get("_CullMode", 2))
-	mtoon.double_sided = (cull_mode == 0) # 0=None (double-sided), 1=Front, 2=Back
-
-	# Colors
+	# --- Base color ---
 	if vectors.has("_Color"):
 		var c: Array = vectors["_Color"]
-		mtoon.base_color = Color(c[0], c[1], c[2], c[3])
-	
+		p["base_color"] = Color(c[0], c[1], c[2], c[3])
 	if textures.has("_MainTex"):
-		mtoon.base_color_texture = _resolve_vrm0_texture(textures["_MainTex"], state)
+		p["base_color_texture"] = _resolve_vrm0_texture(textures["_MainTex"], state)
 
+	# --- Shade color ---
 	if vectors.has("_ShadeColor"):
 		var s: Array = vectors["_ShadeColor"]
-		mtoon.shade_color = Color(s[0], s[1], s[2])
-
+		p["shade_color"] = Color(s[0], s[1], s[2], 1.0)
 	if textures.has("_ShadeTexture"):
-		mtoon.shade_multiply_texture = _resolve_vrm0_texture(textures["_ShadeTexture"], state)
+		p["shade_texture"] = _resolve_vrm0_texture(textures["_ShadeTexture"], state)
 
-	# Shading
-	mtoon.shading_shift_factor = floats.get("_ShadeShift", 0.0)
-	mtoon.shading_toony_factor = floats.get("_ShadeToony", 0.9)
+	# --- Shading ramp ---
+	p["shading_shift_factor"] = floats.get("_ShadeShift", 0.0)
+	p["shading_toony_factor"] = floats.get("_ShadeToony", 0.9)
+	if textures.has("_ShadingGradeTexture"):
+		p["shading_shift_texture"] = _resolve_vrm0_texture(textures["_ShadingGradeTexture"], state)
+	if textures.has("_ReceiveShadowTexture"):
+		p["receive_shadow_texture"] = _resolve_vrm0_texture(textures["_ReceiveShadowTexture"], state)
 
-	# GI
-	mtoon.gi_equalization_factor = floats.get("_IndirectLightIntensity", 0.1)
+	# --- Normal map ---
+	if textures.has("_BumpMap"):
+		p["normal_map_texture"] = _resolve_vrm0_texture(textures["_BumpMap"], state)
+		p["normal_map_scale"] = floats.get("_BumpScale", 1.0)
 
-	# Emission
+	# --- GI / Indirect ---
+	p["indirect_light_intensity"] = floats.get("_IndirectLightIntensity", 0.1)
+
+	# --- Emission ---
 	if vectors.has("_EmissionColor"):
 		var e: Array = vectors["_EmissionColor"]
-		mtoon.emissive_color = Color(e[0], e[1], e[2])
-
+		p["emissive_color"] = Color(e[0], e[1], e[2])
 	if textures.has("_EmissionMap"):
-		mtoon.emissive_texture = _resolve_vrm0_texture(textures["_EmissionMap"], state)
+		p["emissive_texture"] = _resolve_vrm0_texture(textures["_EmissionMap"], state)
 
-	# Rim
+	# --- MatCap ---
+	if vectors.has("_MatcapColor"):
+		var mc: Array = vectors["_MatcapColor"]
+		p["matcap_color"] = Color(mc[0], mc[1], mc[2])
+	if textures.has("_SphereAdd"):
+		p["matcap_texture"] = _resolve_vrm0_texture(textures["_SphereAdd"], state)
+
+	# --- Rim ---
 	if vectors.has("_RimColor"):
 		var r: Array = vectors["_RimColor"]
-		mtoon.rim_color = Color(r[0], r[1], r[2])
-
-	mtoon.rim_fresnel_power = floats.get("_RimFresnelPower", 5.0)
-	mtoon.rim_lift = floats.get("_RimLift", 0.0)
-	mtoon.rim_lighting_mix = floats.get("_RimLightingMix", 1.0)
-
+		p["rim_color"] = Color(r[0], r[1], r[2])
+	p["rim_fresnel_power"] = floats.get("_RimFresnelPower", 5.0)
+	p["rim_lift"] = floats.get("_RimLift", 0.0)
+	p["rim_lighting_mix"] = floats.get("_RimLightingMix", 1.0)
 	if textures.has("_RimTexture"):
-		mtoon.rim_multiply_texture = _resolve_vrm0_texture(textures["_RimTexture"], state)
+		p["rim_texture"] = _resolve_vrm0_texture(textures["_RimTexture"], state)
 
-	# Outline
-	var outline_mode: int = int(floats.get("_OutlineWidthMode", 0))
-	match outline_mode:
-		1: mtoon.outline_width_mode = MtoonMaterial.OutlineWidthMode.WORLD_COORDINATES
-		2: mtoon.outline_width_mode = MtoonMaterial.OutlineWidthMode.SCREEN_COORDINATES
-		_:
-			mtoon.outline_width_mode = MtoonMaterial.OutlineWidthMode.NONE
-			mtoon.outline_enabled = false
-
-	mtoon.outline_width = floats.get("_OutlineWidth", 0.0)
-	
+	# --- Outline ---
+	p["outline_width_mode"] = int(floats.get("_OutlineWidthMode", 0))
+	p["outline_width"] = floats.get("_OutlineWidth", 0.0)
 	if vectors.has("_OutlineColor"):
 		var o: Array = vectors["_OutlineColor"]
-		mtoon.outline_color = Color(o[0], o[1], o[2])
-
+		p["outline_color"] = Color(o[0], o[1], o[2])
+	p["outline_lighting_mix"] = floats.get("_OutlineLightingMix", 1.0)
+	p["outline_color_mode"] = int(floats.get("_OutlineColorMode", 0))
 	if textures.has("_OutlineWidthTexture"):
-		mtoon.outline_width_multiply_texture = _resolve_vrm0_texture(textures["_OutlineWidthTexture"], state)
+		p["outline_width_texture"] = _resolve_vrm0_texture(textures["_OutlineWidthTexture"], state)
 
-	mtoon.outline_lighting_mix = floats.get("_OutlineLightingMix", 1.0)
-
-	# UV Animation
-	mtoon.uv_animation_scroll_x_speed = floats.get("_UvAnimScrollX", 0.0)
-	mtoon.uv_animation_scroll_y_speed = floats.get("_UvAnimScrollY", 0.0)
-	mtoon.uv_animation_rotation_speed = floats.get("_UvAnimRotation", 0.0)
-
+	# --- UV Animation ---
+	p["uv_anim_scroll_x"] = floats.get("_UvAnimScrollX", 0.0)
+	p["uv_anim_scroll_y"] = floats.get("_UvAnimScrollY", 0.0)
+	p["uv_anim_rotation"] = floats.get("_UvAnimRotation", 0.0)
 	if textures.has("_UvAnimMaskTexture"):
-		mtoon.uv_animation_mask_texture = _resolve_vrm0_texture(textures["_UvAnimMaskTexture"], state)
+		p["uv_anim_mask_texture"] = _resolve_vrm0_texture(textures["_UvAnimMaskTexture"], state)
 
-	return mtoon
+	return p
 
 
 # ---------------------------------------------------------------------------

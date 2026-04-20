@@ -150,6 +150,14 @@ func _texture_property_changed(texture_property: EditorProperty, object: ShaderM
 
 
 func _process_tex_property(object: ShaderMaterial) -> void:
+	# first_property is only set after _AlphaCutoutEnable is parsed.
+	# If a texture parameter appears earlier in the property list (possible
+	# depending on shader variant or Godot inspector ordering), first_property
+	# will still be null here and get_parent() would crash. Bail out safely.
+	if first_property == null:
+		last_tex_property = ""
+		return
+
 	var prop = last_tex_property
 	var parent_vbox = first_property.get_parent()
 	var texture_property: EditorProperty = parent_vbox.get_child(parent_vbox.get_child_count() - 1)
@@ -165,6 +173,7 @@ func _process_tex_property(object: ShaderMaterial) -> void:
 			new_parent.add_sibling(texture_property)
 			texture_property.label = property_text.get(prop, ["texture_property.label", ""])[0]
 			property_name_to_editor[prop] = texture_property
+
 
 
 func do_unfold_section(editor_inspector_section: Node) -> void:

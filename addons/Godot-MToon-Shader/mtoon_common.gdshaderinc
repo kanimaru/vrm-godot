@@ -358,7 +358,15 @@ void light() {
 
 	if (LIGHT_IS_DIRECTIONAL) {
 		//UNITY_LIGHT_ATTENUATION(shadowAttenuation, i, posWorld.xyz);
-		float lightAttenuation = mix(1.0, length(vec3(ATTENUATION))/length(vec3(1.0)), _ReceiveShadowRate * texture(_ReceiveShadowTexture, mainUv).r);
+		// Raw shadow attenuation from Godot (PSSM softens this into a gradient).
+		// Run it through the same toon linearstep used for NdotL so that shadow
+		// boundaries snap cleanly instead of producing halftone gradient artifacts.
+		float rawAttenuation = length(vec3(ATTENUATION)) / length(vec3(1.0));
+		float maxIntThr = mix(1.0, _ShadeShift, _ShadeToony);
+		float minIntThr = _ShadeShift;
+		float toonyAttenuation = clamp((rawAttenuation - minIntThr) / max(EPS_COL, maxIntThr - minIntThr), 0.0, 1.0);
+		float shadowFactor = _ReceiveShadowRate * texture(_ReceiveShadowTexture, mainUv).r;
+		float lightAttenuation = mix(1.0, toonyAttenuation, shadowFactor);
 
 		vec3 col;
 		// shade
