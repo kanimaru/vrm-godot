@@ -13,8 +13,7 @@
 sky_material = SubResource("ProceduralSkyMaterial_fajj3")
 
 [sub_resource type="Environment" id="Environment_0em4h"]
-background_mode = 1
-background_color = Color(0.65834004, 0.6583399, 0.6583399, 1)
+background_mode = 2
 sky = SubResource("Sky_o4l5k")
 sdfgi_enabled = true
 
@@ -177,13 +176,13 @@ access = 2
 filters = PackedStringArray("*.vrm ; VRM Model")
 show_hidden_files = true
 
-[node name="luna" parent="." unique_id=2104284376 instance=ExtResource("4_fajj3")]
+[node name="luna" parent="." unique_id=53857243 instance=ExtResource("4_fajj3")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.08140075, 0, 0.07041144)
 
 [node name="model" parent="." unique_id=686256747 instance=ExtResource("5_o4l5k")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.2946157, 0, -0.7778704)
+transform = Transform3D(-0.8660254, 0, 0.50000006, 0, 1, 0, -0.50000006, 0, -0.8660254, 1.2946157, 0, -0.7778704)
 
 [node name="Dove" parent="." unique_id=658218776 instance=ExtResource("6_44uuv")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.76291394, 0, -1.3350391)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.76291394, 0.08760327, -1.3350391)
 
 [editable path="Dove"]
