@@ -3,9 +3,6 @@
 [ext_resource type="Script" uid="uid://blvsirfubnhr8" path="res://runtime/vrm_runtime_loader.gd" id="1_loader"]
 [ext_resource type="Script" uid="uid://de01t4tr8jp7t" path="res://addons/vrm/nodes/vrm_editor_camera.gd" id="2_keiwm"]
 [ext_resource type="LightmapGIData" uid="uid://dpmydgwrd4oom" path="res://runtime/vrm_runtime_loader.lmbake" id="3_04yoo"]
-[ext_resource type="PackedScene" uid="uid://cl40rwo2k308m" path="res://assets/luna/luna.vrm" id="4_fajj3"]
-[ext_resource type="PackedScene" uid="uid://dwp7ll1f6xf2h" path="res://assets/temptic/model.vrm" id="5_o4l5k"]
-[ext_resource type="PackedScene" uid="uid://0d3wcfpypk57" path="res://assets/dove/Dove.vrm" id="6_44uuv"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_fajj3"]
 
@@ -56,11 +53,11 @@ light_data = ExtResource("3_04yoo")
 mesh = SubResource("PlaneMesh_0xskk")
 
 [node name="Floor2" type="MeshInstance3D" parent="LightmapGI" unique_id=1503542484]
-transform = Transform3D(1, 0, 0, 0, 0.09181444, -0.9957761, 0, 0.9957761, 0.09181444, 0, 0, -2.3660636)
+transform = Transform3D(1, 0, 0, 0, -4.3711385e-08, -0.99999994, 0, 0.99999994, -4.3711385e-08, 0, 2, -2)
 mesh = SubResource("PlaneMesh_0xskk")
 
 [node name="Floor3" type="MeshInstance3D" parent="LightmapGI" unique_id=906010580]
-transform = Transform3D(-4.371139e-08, 0.9957761, 0.09181444, 0, 0.09181445, -0.99577624, -1.0000001, -4.352676e-08, -4.013337e-09, -2.4811234, 0, -0.14792871)
+transform = Transform3D(-4.3711392e-08, 0.99999994, -4.3711392e-08, 0, -4.3711385e-08, -1.0000001, -1.0000001, -4.3711385e-08, 1.9106857e-15, -2, 2, 0)
 mesh = SubResource("PlaneMesh_0xskk")
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=2059225993]
@@ -175,14 +172,3 @@ file_mode = 0
 access = 2
 filters = PackedStringArray("*.vrm ; VRM Model")
 show_hidden_files = true
-
-[node name="luna" parent="." unique_id=53857243 instance=ExtResource("4_fajj3")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.08140075, 0, 0.07041144)
-
-[node name="model" parent="." unique_id=686256747 instance=ExtResource("5_o4l5k")]
-transform = Transform3D(-0.8660254, 0, 0.50000006, 0, 1, 0, -0.50000006, 0, -0.8660254, 1.2946157, 0, -0.7778704)
-
-[node name="Dove" parent="." unique_id=658218776 instance=ExtResource("6_44uuv")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.76291394, 0.08760327, -1.3350391)
-
-[editable path="Dove"]

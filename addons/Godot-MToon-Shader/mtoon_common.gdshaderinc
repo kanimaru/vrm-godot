@@ -328,6 +328,7 @@ void fragment() {
 	METALLIC = 0.0;
 #if defined(ALPHA_BLEND)
 	ALPHA = alpha;
+	if (alpha < 0.0001) { discard; }
 #elif defined(ALPHA_CUTOUT)
 	if (_AlphaCutoutEnable > 0.5 && alpha < _Cutoff) { discard; }
 #endif
