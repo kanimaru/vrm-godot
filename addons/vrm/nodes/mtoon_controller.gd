@@ -1,6 +1,5 @@
 @tool
 extends Node3D
-class_name MtoonController
 
 
 ## Manages all MToon materials for a VRM model.

@@ -54,6 +54,9 @@ uniform float _ShadeShift : hint_range(-1.0, 1.0) = 0.0;
 uniform float _ShadeToony : hint_range(0.0, 1.0) = 0.9;
 uniform float _LightColorAttenuation : hint_range(0.0, 1.0) = 0.0;
 uniform float _IndirectLightIntensity : hint_range(0.0, 1.0) = 0.1;
+// RGB ambient light colour sampled from the scene environment each frame
+// by GodotMtoonController. Controls how the environment tints shaded regions.
+uniform vec3 _GIAmbientColor : source_color = vec3(1.0, 1.0, 1.0);
 uniform sampler2D _RimTexture : source_color, hint_default_white;
 uniform vec4 _RimColor : source_color = vec4(0,0,0,1);
 uniform float _RimLightingMix : hint_range(0.0, 1.0) = 0.0;
@@ -276,7 +279,7 @@ void fragment() {
 
 	emission += mix(rim * (1.0 - _RimLightingMix), vec3(0, 0, 0), isOutline);
 	fragment_albedo_output += mix(rim * _RimLightingMix, vec3(0, 0, 0), isOutline);
-	vec3 albedo = LIGHT_COME_FROM_UP_RATIO * fragment_albedo_output;
+	vec3 albedo = _GIAmbientColor * LIGHT_COME_FROM_UP_RATIO * fragment_albedo_output;
 	NORMAL = normalize(mix_normal(up_normal, viewNormal, _IndirectLightIntensity));
 
 	// Emission
@@ -343,11 +346,11 @@ float SchlickFresnel(float u) {
 void light() {
 	bool isDirectional = true; // TODO: Generates clustered forward artifacts unless godotegnine/godot#48012 is applied
 	// isDirectional = (RIM == 1.0);
-	vec3 indirectLighting = vec3(0.0);
-	// TODO if isFirstLight:
-	//indirectLighting = DIFFUSE_LIGHT.rgb / fragment_albedo_output;
-	//indirectLighting = mix(indirectLighting, max(vec3(EPS_COL), max(indirectLighting.x, max(indirectLighting.y, indirectLighting.z))), _LightColorAttenuation); // color atten
-	// in light():
+	// Indirect ambient: colour sampled from the scene environment (set by GodotMtoonController).
+	// Scaled by LIGHT_COME_FROM_UP_RATIO so it respects the same up-light equalization
+	// applied to ALBEDO in fragment(), and normalised by PI for Lambertian consistency.
+	float LIGHT_COME_FROM_UP_RATIO = mix(0.8, 1.0, sin(_IndirectLightIntensity));
+	vec3 indirectLighting = _GIAmbientColor * LIGHT_COME_FROM_UP_RATIO / 3.14159;
 
 	float addDotNL =  dot(normalize(viewNormal), LIGHT);
 

@@ -237,6 +237,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		# The surface material resource_name on baked ArrayMesh surfaces matches
 		# the resource_name of the corresponding glTF material.
 		var name_to_shader: Dictionary[String, ShaderMaterial] = {}
+		var active_mtoons: Array[Material] = []
 		for mat_idx: int in range(mtoon_configs.size()):
 			var params: Variant = mtoon_configs[mat_idx]
 			if not (params is Dictionary):
@@ -252,8 +253,20 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			if gltf_mat != null and not gltf_mat.resource_name.is_empty():
 				name_to_shader[gltf_mat.resource_name] = body_mat
 
+			active_mtoons.append(body_mat)
+			if outline_mat != null:
+				active_mtoons.append(outline_mat)
+
 		if not name_to_shader.is_empty():
 			_apply_materials_to_scene_tree(root, name_to_shader)
+
+			var mtoon_controller_script := load("res://addons/Godot-MToon-Shader/mtoon_controller.gd")
+			if mtoon_controller_script != null:
+				var controller: Node = mtoon_controller_script.new()
+				controller.name = "MtoonController"
+				controller.set("mtoon_materials", active_mtoons)
+				root.add_child(controller, true)
+				controller.owner = root
 
 	return OK
 

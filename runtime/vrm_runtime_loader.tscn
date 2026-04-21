@@ -2,19 +2,28 @@
 
 [ext_resource type="Script" uid="uid://blvsirfubnhr8" path="res://runtime/vrm_runtime_loader.gd" id="1_loader"]
 [ext_resource type="Script" uid="uid://de01t4tr8jp7t" path="res://addons/vrm/nodes/vrm_editor_camera.gd" id="2_keiwm"]
+[ext_resource type="LightmapGIData" uid="uid://dpmydgwrd4oom" path="res://runtime/vrm_runtime_loader.lmbake" id="3_04yoo"]
 
 [sub_resource type="Environment" id="Environment_0em4h"]
 background_mode = 1
-ambient_light_source = 2
-ambient_light_color = Color(1, 1, 1, 1)
-ambient_light_energy = 0.1
-reflected_light_source = 2
+sdfgi_enabled = true
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_os137"]
+albedo_color = Color(0.31709585, 0.6073819, 0, 1)
+emission_enabled = true
+emission = Color(0.36194485, 0.69554687, 7.70092e-07, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_0xskk"]
+lightmap_size_hint = Vector2i(27, 27)
+material = SubResource("StandardMaterial3D_os137")
+add_uv2 = true
+size = Vector2(5, 5)
 
 [node name="VrmRuntimeLoader" type="Node3D" unique_id=1137337819]
 script = ExtResource("1_loader")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1099013935]
-transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 5, 0)
+transform = Transform3D(0.7459242, -0.6269943, -0.224667, 0.4399967, 0.21066062, 0.87294036, -0.5000002, -0.7499999, 0.43301255, 0, 5, 0)
 shadow_enabled = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1574054725]
@@ -25,6 +34,25 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 2)
 script = ExtResource("2_keiwm")
 
 [node name="ModelAnchor" type="Node3D" parent="." unique_id=1252560870]
+
+[node name="LightmapGI" type="LightmapGI" parent="." unique_id=1818979185]
+quality = 3
+supersampling = true
+directional = true
+shadowmask_mode = 2
+generate_probes_subdiv = 3
+light_data = ExtResource("3_04yoo")
+
+[node name="Floor" type="MeshInstance3D" parent="LightmapGI" unique_id=450471789]
+mesh = SubResource("PlaneMesh_0xskk")
+
+[node name="Floor2" type="MeshInstance3D" parent="LightmapGI" unique_id=1503542484]
+transform = Transform3D(1, 0, 0, 0, 0.09181444, -0.9957761, 0, 0.9957761, 0.09181444, 0, 0, -2.3660636)
+mesh = SubResource("PlaneMesh_0xskk")
+
+[node name="Floor3" type="MeshInstance3D" parent="LightmapGI" unique_id=906010580]
+transform = Transform3D(-4.371139e-08, 0.9957761, 0.09181444, 0, 0.09181445, -0.99577624, -1.0000001, -4.352676e-08, -4.013337e-09, -2.4811234, 0, -0.14792871)
+mesh = SubResource("PlaneMesh_0xskk")
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=2059225993]
 

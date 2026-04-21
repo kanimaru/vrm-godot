@@ -12,6 +12,8 @@ sky_material = SubResource("ProceduralSkyMaterial_whhtk")
 [sub_resource type="Environment" id="Environment_o4y4p"]
 background_mode = 2
 sky = SubResource("Sky_nmre3")
+ambient_light_source = 3
+ambient_light_color = Color(1, 1, 1, 1)
 tonemap_mode = 2
 glow_enabled = true
 
@@ -24,6 +26,6 @@ environment = SubResource("Environment_o4y4p")
 transform = Transform3D(-0.1749369, 0.19686353, 0.96469784, -0.80341524, 0.5378396, -0.25544578, -0.5691407, -0.8197397, 0.06407517, 0, -0.8249644, 5.8408856)
 shadow_enabled = true
 
-[node name="Dove" parent="." unique_id=5812752 instance=ExtResource("1_whhtk")]
+[node name="Dove" parent="." unique_id=658218776 instance=ExtResource("1_whhtk")]
 
 [editable path="Dove"]

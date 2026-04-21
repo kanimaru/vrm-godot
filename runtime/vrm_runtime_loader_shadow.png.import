@@ -1,0 +1,29 @@
+[remap]
+
+importer="2d_array_texture"
+type="CompressedTexture2DArray"
+uid="uid://hxhs017lt5ls"
+path.s3tc="res://.godot/imported/vrm_runtime_loader_shadow.png-fd5e442c058e8a5eeb08824460c7ad33.s3tc.ctexarray"
+metadata={
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
+}
+
+[deps]
+
+source_file="res://runtime/vrm_runtime_loader_shadow.png"
+dest_files=["res://.godot/imported/vrm_runtime_loader_shadow.png-fd5e442c058e8a5eeb08824460c7ad33.s3tc.ctexarray"]
+
+[params]
+
+compress/mode=2
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/uastc_level=0
+compress/rdo_quality_loss=0.0
+compress/hdr_compression=1
+compress/channel_pack=1
+mipmaps/generate=false
+mipmaps/limit=-1
+slices/horizontal=1
+slices/vertical=1
