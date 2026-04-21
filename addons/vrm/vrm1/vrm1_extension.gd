@@ -182,16 +182,144 @@ func _parse_expression_data(d: Dictionary) -> Vrm1ExpressionData:
 	return ed
 
 
+
 func _parse_spring_bone(d: Dictionary) -> Vrm1SpringBone:
-	var sec: Vrm1SpringBone = Vrm1SpringBone.new()
-	# Empty stub; strictly explicit types
-	return sec
+	var sb: Vrm1SpringBone = Vrm1SpringBone.new()
+
+	if d.has("colliders"):
+		for c: Dictionary in d["colliders"]:
+			sb.colliders.append(_parse_spring_bone_collider(c))
+
+	if d.has("colliderGroups"):
+		for cg: Dictionary in d["colliderGroups"]:
+			var group: Vrm1SpringBoneColliderGroup = Vrm1SpringBoneColliderGroup.new()
+			group.name = cg.get("name", "")
+
+			if cg.has("colliders"):
+				var indices: PackedInt32Array = PackedInt32Array()
+				for raw_idx in cg["colliders"]:
+					indices.push_back(int(raw_idx))
+				group.colliders = indices
+
+			sb.collider_groups.append(group)
+
+	if d.has("springs"):
+		for s: Dictionary in d["springs"]:
+			sb.springs.append(_parse_spring_bone_spring(s))
+
+	return sb
+
+
+func _parse_spring_bone_collider(d: Dictionary) -> Vrm1SpringBoneCollider:
+	var col: Vrm1SpringBoneCollider = Vrm1SpringBoneCollider.new()
+	col.node = d.get("node", -1)
+
+	var shape: Vrm1SpringBoneShape = Vrm1SpringBoneShape.new()
+
+	# Check for VRMC_springBone_extended_collider shape first (takes priority).
+	var ext_shape: Dictionary = {}
+	if (
+		d.has("extensions")
+		and d["extensions"].has("VRMC_springBone_extended_collider")
+	):
+		var ext: Dictionary = d["extensions"]["VRMC_springBone_extended_collider"]
+		if ext.has("shape"):
+			ext_shape = ext["shape"]
+
+	if not ext_shape.is_empty():
+		# Extended collider — may be sphere, capsule, or plane.
+		if ext_shape.has("sphere"):
+			var s: Dictionary = ext_shape["sphere"]
+			shape.type = "sphere"
+			shape.inside = s.get("inside", false)
+			shape.radius = s.get("radius", 0.0)
+			var off: Array = s.get("offset", [0.0, 0.0, 0.0])
+			shape.offset = Vector3(off[0], off[1], off[2])
+
+		elif ext_shape.has("capsule"):
+			var c: Dictionary = ext_shape["capsule"]
+			shape.type = "capsule"
+			shape.inside = c.get("inside", false)
+			shape.radius = c.get("radius", 0.0)
+			var off: Array = c.get("offset", [0.0, 0.0, 0.0])
+			shape.offset = Vector3(off[0], off[1], off[2])
+			var tail: Array = c.get("tail", [0.0, 0.0, 0.0])
+			shape.tail = Vector3(tail[0], tail[1], tail[2])
+
+		elif ext_shape.has("plane"):
+			var p: Dictionary = ext_shape["plane"]
+			shape.type = "plane"
+			var off: Array = p.get("offset", [0.0, 0.0, 0.0])
+			shape.offset = Vector3(off[0], off[1], off[2])
+			var n: Array = p.get("normal", [0.0, 0.0, 1.0])
+			shape.normal = Vector3(n[0], n[1], n[2])
+
+	elif d.has("shape"):
+		# Standard VRMC_springBone collider shape.
+		var raw: Dictionary = d["shape"]
+
+		if raw.has("sphere"):
+			var s: Dictionary = raw["sphere"]
+			shape.type = "sphere"
+			shape.radius = s.get("radius", 0.0)
+			var off: Array = s.get("offset", [0.0, 0.0, 0.0])
+			shape.offset = Vector3(off[0], off[1], off[2])
+
+		elif raw.has("capsule"):
+			var c: Dictionary = raw["capsule"]
+			shape.type = "capsule"
+			shape.radius = c.get("radius", 0.0)
+			var off: Array = c.get("offset", [0.0, 0.0, 0.0])
+			shape.offset = Vector3(off[0], off[1], off[2])
+			var tail: Array = c.get("tail", [0.0, 0.0, 0.0])
+			shape.tail = Vector3(tail[0], tail[1], tail[2])
+
+	col.shape = shape
+	return col
+
+
+func _parse_spring_bone_spring(d: Dictionary) -> Vrm1SpringBoneSpring:
+	var spring: Vrm1SpringBoneSpring = Vrm1SpringBoneSpring.new()
+	spring.name = d.get("name", "")
+	spring.center = d.get("center", -1)
+
+	if d.has("colliderGroups"):
+		var indices: PackedInt32Array = PackedInt32Array()
+		for raw_idx in d["colliderGroups"]:
+			indices.push_back(int(raw_idx))
+		spring.collider_groups = indices
+
+	if d.has("joints"):
+		for jt: Dictionary in d["joints"]:
+			spring.joints.append(_parse_spring_bone_joint(jt))
+
+	return spring
+
+
+func _parse_spring_bone_joint(d: Dictionary) -> Vrm1SpringBoneJoint:
+	var jt: Vrm1SpringBoneJoint = Vrm1SpringBoneJoint.new()
+	jt.node = d.get("node", -1)
+	jt.hit_radius = d.get("hitRadius", 0.0)
+	jt.stiffness = d.get("stiffness", 1.0)
+	jt.gravity_power = d.get("gravityPower", 0.0)
+	jt.drag_force = d.get("dragForce", 0.5)
+
+	# gravityDir is a [x, y, z] JSON array per spec, not a dict.
+	if d.has("gravityDir"):
+		var gd: Array = d["gravityDir"]
+		jt.gravity_dir = Vector3(gd[0], gd[1], gd[2])
+
+	return jt
+
 
 
 func _import_post(state: GLTFState, root: Node) -> Error:
 	var vrm_top_level: Vrm1TopLevel = state.get_additional_data("vrm1") as Vrm1TopLevel
 	if vrm_top_level == null:
 		return OK
+	
+	# Store the parsed VRM data as node metadata so the EditorInspectorPlugin can access it.
+	root.set_meta("vrm1_data", vrm_top_level)
 
 	var skeleton: Skeleton3D = null
 	var stack: Array[Node] = [root]

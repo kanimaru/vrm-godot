@@ -28,7 +28,7 @@ func _process(delta: float) -> void:
 	# Calculate ambient color approx from environment
 	var ambient: Color = Color.BLACK
 	if env.background_mode == Environment.BG_COLOR:
-		ambient = env.background_color * env.background_energy
+		ambient = env.background_color * env.background_energy_multiplier
 	elif env.background_mode == Environment.BG_CLEAR_COLOR:
 		ambient = RenderingServer.get_default_clear_color() * env.background_energy
 	else:

@@ -166,14 +166,14 @@ func _parse_secondary_animation(d: Dictionary) -> Vrm0SecondaryAnimation:
 			
 			if s.has("bones"):
 				var arr: PackedInt32Array = PackedInt32Array()
-				for b: int in s["bones"]:
-					arr.push_back(b)
+				for raw_b in s["bones"]:
+					arr.push_back(int(raw_b))
 				spring.bones = arr
-				
+
 			if s.has("colliderGroups"):
 				var arr: PackedInt32Array = PackedInt32Array()
-				for cg: int in s["colliderGroups"]:
-					arr.push_back(cg)
+				for raw_cg in s["colliderGroups"]:
+					arr.push_back(int(raw_cg))
 				spring.collider_groups = arr
 				
 			sec.bone_groups.append(spring)
@@ -204,6 +204,9 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	# We rotate the root 180 degrees to align the avatar with the expected forward vector.
 	if root is Node3D:
 		root.rotate_y(PI)
+	
+	# Store the parsed VRM data as node metadata so the EditorInspectorPlugin can access it.
+	root.set_meta("vrm0_data", vrm_top_level)
 
 	var skeleton: Skeleton3D = null
 	var stack: Array[Node] = [root]
