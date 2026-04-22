@@ -117,7 +117,24 @@ func _parse_look_at(d: Dictionary) -> Vrm1LookAt:
 	if d.has("offsetFromHeadBone"):
 		look_at.offset_from_head_bone = Vector3(d["offsetFromHeadBone"][0], d["offsetFromHeadBone"][1], d["offsetFromHeadBone"][2])
 	look_at.type = d.get("type", "bone")
+	
+	if d.has("rangeMapHorizontalInner"):
+		look_at.range_map_horizontal_inner = _parse_look_at_range_map(d["rangeMapHorizontalInner"])
+	if d.has("rangeMapHorizontalOuter"):
+		look_at.range_map_horizontal_outer = _parse_look_at_range_map(d["rangeMapHorizontalOuter"])
+	if d.has("rangeMapVerticalDown"):
+		look_at.range_map_vertical_down = _parse_look_at_range_map(d["rangeMapVerticalDown"])
+	if d.has("rangeMapVerticalUp"):
+		look_at.range_map_vertical_up = _parse_look_at_range_map(d["rangeMapVerticalUp"])
+		
 	return look_at
+
+
+func _parse_look_at_range_map(d: Dictionary) -> Vrm1LookAt.RangeMap:
+	var rm: Vrm1LookAt.RangeMap = Vrm1LookAt.RangeMap.new()
+	rm.input_max_value = d.get("inputMaxValue", 90.0)
+	rm.output_scale = d.get("outputScale", 10.0)
+	return rm
 
 
 func _parse_expressions(d: Dictionary) -> Vrm1Expressions:
@@ -349,12 +366,22 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		skeleton.add_child(spring_sim, true)
 		spring_sim.owner = root
 
+	var expr_controller: Vrm1ExpressionController = null
 	if vrm_top_level.expressions != null:
-		var expr_controller: Vrm1ExpressionController = Vrm1ExpressionController.new()
+		expr_controller = Vrm1ExpressionController.new()
 		expr_controller.name = "Vrm1ExpressionController"
 		root.add_child(expr_controller, true)
 		expr_controller.owner = root
 		expr_controller.compile_vrm1_binds(vrm_top_level.expressions, state, root)
+
+	if vrm_top_level.look_at != null:
+		var look_at_script := load("res://addons/vrm/vrm1/nodes/vrm1_look_at_controller.gd")
+		if look_at_script != null:
+			var look_at_controller: Node = look_at_script.new()
+			look_at_controller.name = "Vrm1LookAtController"
+			root.add_child(look_at_controller, true)
+			look_at_controller.owner = root
+			look_at_controller.setup(vrm_top_level.look_at, skeleton, expr_controller)
 
 	# --- MToon Material Replacement ---
 	var mtoon_configs: Variant = state.get_additional_data("vrm1_mtoon")
@@ -527,6 +554,7 @@ func _resolve_khr_texture_transform(texture_info: Dictionary) -> Vector4:
 # ---------------------------------------------------------------------------
 
 ## Resolves a glTF textureInfo object (e.g. {"index": 3}) to a Godot Texture2D.
+## Follows the chain: textureInfo.index -> textures[n].src_image -> images[n].
 func _resolve_gltf_texture(texture_info: Dictionary, state: GLTFState) -> Texture2D:
 	var tex_index: int = texture_info.get("index", -1)
 	if tex_index < 0:
