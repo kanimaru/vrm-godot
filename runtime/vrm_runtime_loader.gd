@@ -299,7 +299,6 @@ func _on_animation_selected(path: String) -> void:
 
 
 func _retarget_library_for_model(library: AnimationLibrary, model: Node) -> void:
-	# Find the skeleton
 	var skeleton: Skeleton3D = _find_skeleton(model)
 	if skeleton == null:
 		push_warning("VrmRuntimeLoader: No Skeleton3D found for retargeting.")
@@ -312,14 +311,17 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node) -> void
 		var b: String = skeleton.get_bone_name(i)
 		bone_names_lower[b.to_lower()] = b
 
-	print("VrmRuntimeLoader: Retargeting for model '", model.name, "'")
-	print("  Skeleton bones (", skeleton.get_bone_count(), "): ", bone_names_lower.values().slice(0, 5), "...")
-	print("  Humanoid map entries: ", role_to_bone.size())
+	# Pre-compute world rest rotations for all bones (needed for Step 2 of spec).
+	var world_rests: Array[Quaternion] = []
+	world_rests.resize(skeleton.get_bone_count())
+	for i in range(skeleton.get_bone_count()):
+		world_rests[i] = _compute_bone_world_rest(skeleton, i)
 
 	for anim_name in library.get_animation_list():
 		var anim: Animation = library.get_animation(anim_name)
 		var fixed := 0
 		var failed: Array[String] = []
+
 		for i in range(anim.get_track_count()):
 			var path_str: String = str(anim.track_get_path(i))
 			if not "%GeneralSkeleton:" in path_str:
@@ -328,24 +330,54 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node) -> void
 			if parts.size() < 2:
 				continue
 			var bone_name: String = parts[1]
-			# Already matches
+
+			# --- Step A: Resolve the bone name ---
+			var resolved_name := ""
 			if skeleton.find_bone(bone_name) != -1:
+				resolved_name = bone_name
+			elif role_to_bone.has(bone_name):
+				resolved_name = role_to_bone[bone_name]
+			else:
+				var lower := bone_name.to_lower()
+				if bone_names_lower.has(lower):
+					resolved_name = bone_names_lower[lower]
+
+			if resolved_name.is_empty():
+				failed.append(bone_name)
 				continue
-			# Try humanoid role metadata lookup
-			if role_to_bone.has(bone_name):
-				parts[1] = role_to_bone[bone_name]
+
+			if resolved_name != bone_name:
+				parts[1] = resolved_name
 				anim.track_set_path(i, NodePath(":".join(parts)))
 				fixed += 1
+
+			# --- Step B: Apply target rest pose (spec Step 2) ---
+			# B.LocalRotation = L_dst * W_dst⁻¹ * NLR * W_dst
+			if anim.track_get_type(i) != Animation.TYPE_ROTATION_3D:
 				continue
-			# Try case-insensitive match
-			var lower: String = bone_name.to_lower()
-			if bone_names_lower.has(lower):
-				parts[1] = bone_names_lower[lower]
-				anim.track_set_path(i, NodePath(":".join(parts)))
-				fixed += 1
+			var bone_idx := skeleton.find_bone(resolved_name)
+			if bone_idx < 0:
 				continue
-			failed.append(bone_name)
-		print("  Animation '", anim_name, "': fixed=", fixed, " unresolved=", failed)
+			var L_dst: Quaternion = skeleton.get_bone_rest(bone_idx).basis.get_rotation_quaternion()
+			var W_dst: Quaternion = world_rests[bone_idx]
+			var W_dst_inv: Quaternion = W_dst.inverse()
+			# Only apply if the rest is non-trivial (avoid unnecessary computation)
+			if L_dst.is_equal_approx(Quaternion.IDENTITY) and W_dst.is_equal_approx(Quaternion.IDENTITY):
+				continue
+			for k in range(anim.track_get_key_count(i)):
+				var nlr: Quaternion = anim.track_get_key_value(i, k)
+				anim.track_set_key_value(i, k, L_dst * W_dst_inv * nlr * W_dst)
+
+		print("VrmRuntimeLoader: '", anim_name, "' fixed=", fixed, " unresolved=", failed)
+
+
+func _compute_bone_world_rest(skeleton: Skeleton3D, bone_idx: int) -> Quaternion:
+	var rot: Quaternion = skeleton.get_bone_rest(bone_idx).basis.get_rotation_quaternion()
+	var parent: int = skeleton.get_bone_parent(bone_idx)
+	while parent >= 0:
+		rot = skeleton.get_bone_rest(parent).basis.get_rotation_quaternion() * rot
+		parent = skeleton.get_bone_parent(parent)
+	return rot
 
 
 func _find_skeleton(node: Node) -> Skeleton3D:
