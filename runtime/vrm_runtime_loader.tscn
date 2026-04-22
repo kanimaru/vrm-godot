@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" uid="uid://blvsirfubnhr8" path="res://runtime/vrm_runtime_loader.gd" id="1_loader"]
 [ext_resource type="Script" uid="uid://de01t4tr8jp7t" path="res://addons/vrm/nodes/vrm_editor_camera.gd" id="2_keiwm"]
-[ext_resource type="LightmapGIData" uid="uid://dpmydgwrd4oom" path="res://runtime/vrm_runtime_loader.lmbake" id="3_04yoo"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_fajj3"]
 
@@ -13,17 +12,6 @@ sky_material = SubResource("ProceduralSkyMaterial_fajj3")
 background_mode = 2
 sky = SubResource("Sky_o4l5k")
 sdfgi_enabled = true
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_os137"]
-albedo_color = Color(0.31709585, 0.6073819, 0, 1)
-emission_enabled = true
-emission = Color(0.36194485, 0.69554687, 7.70092e-07, 1)
-
-[sub_resource type="PlaneMesh" id="PlaneMesh_0xskk"]
-lightmap_size_hint = Vector2i(27, 27)
-material = SubResource("StandardMaterial3D_os137")
-add_uv2 = true
-size = Vector2(5, 5)
 
 [node name="VrmRuntimeLoader" type="Node3D" unique_id=1137337819]
 script = ExtResource("1_loader")
@@ -40,25 +28,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 2)
 script = ExtResource("2_keiwm")
 
 [node name="ModelAnchor" type="Node3D" parent="." unique_id=1252560870]
-
-[node name="LightmapGI" type="LightmapGI" parent="." unique_id=1818979185]
-quality = 3
-supersampling = true
-directional = true
-shadowmask_mode = 2
-generate_probes_subdiv = 3
-light_data = ExtResource("3_04yoo")
-
-[node name="Floor" type="MeshInstance3D" parent="LightmapGI" unique_id=450471789]
-mesh = SubResource("PlaneMesh_0xskk")
-
-[node name="Floor2" type="MeshInstance3D" parent="LightmapGI" unique_id=1503542484]
-transform = Transform3D(1, 0, 0, 0, -4.3711385e-08, -0.99999994, 0, 0.99999994, -4.3711385e-08, 0, 2, -2)
-mesh = SubResource("PlaneMesh_0xskk")
-
-[node name="Floor3" type="MeshInstance3D" parent="LightmapGI" unique_id=906010580]
-transform = Transform3D(-4.3711392e-08, 0.99999994, -4.3711392e-08, 0, -4.3711385e-08, -1.0000001, -1.0000001, -4.3711385e-08, 1.9106857e-15, -2, 2, 0)
-mesh = SubResource("PlaneMesh_0xskk")
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=2059225993]
 
