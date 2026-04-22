@@ -334,9 +334,47 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	var vrm_top_level: Vrm1TopLevel = state.get_additional_data("vrm1") as Vrm1TopLevel
 	if vrm_top_level == null:
 		return OK
-	
+
 	# Store the parsed VRM data as node metadata so the EditorInspectorPlugin can access it.
 	root.set_meta("vrm1_data", vrm_top_level)
+
+	# Store a vrm_role -> actual_bone_name lookup on the root so VrmaAnimationLibraryBuilder
+	# can retarget animations to this avatar's real bone names at import/runtime.
+	if vrm_top_level.humanoid != null:
+		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
+		var humanoid_bone_map: Dictionary[String, String] = {}
+		for vrm_bone_name: String in vrm_top_level.humanoid.human_bones:
+			var bone_data: Vrm1HumanoidBone = vrm_top_level.humanoid.human_bones[vrm_bone_name]
+			if bone_data.node < 0 or bone_data.node >= gltf_nodes.size():
+				continue
+			var gnode: GLTFNode = gltf_nodes[bone_data.node]
+			var bone_name: String = gnode.original_name
+			if bone_name.is_empty():
+				bone_name = gnode.resource_name
+			humanoid_bone_map[vrm_bone_name] = bone_name
+		root.set_meta("vrm_humanoid_bones", humanoid_bone_map)
+
+	var retargeter_script := load("res://addons/vrm/common/vrm_animation_retargeter.gd")
+	if retargeter_script != null:
+		var retargeter: Node = Node.new()
+		retargeter.set_script(retargeter_script)
+		retargeter.name = "VrmAnimationRetargeter"
+		
+		# Find the animation player to link it
+		var anim_player: AnimationMixer = null
+		var p_stack: Array[Node] = [root]
+		while not p_stack.is_empty():
+			var p_node: Node = p_stack.pop_back()
+			if p_node is AnimationMixer:
+				anim_player = p_node
+				break
+			p_stack.append_array(p_node.get_children(true))
+		
+		if anim_player != null:
+			retargeter.animation_player = anim_player
+			
+		root.add_child(retargeter, true)
+		retargeter.owner = root
 
 	var skeleton: Skeleton3D = null
 	var stack: Array[Node] = [root]
@@ -349,16 +387,18 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			break
 		stack.append_array(n.get_children(true))
 
+
 	if skeleton != null and vrm_top_level.spring_bone != null:
 		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
 		var node_names: Dictionary[int, String] = {}
 		for i: int in range(gltf_nodes.size()):
 			var gnode: GLTFNode = gltf_nodes[i]
-			if gnode != null:
-				var node_name: String = gnode.original_name
-				if node_name.is_empty():
-					node_name = gnode.resource_name
-				node_names[i] = node_name
+			if gnode == null:
+				continue
+			var node_name: String = gnode.original_name
+			if node_name.is_empty():
+				node_name = gnode.resource_name
+			node_names[i] = node_name
 
 		var spring_sim: Vrm1SpringBoneSimulator = Vrm1SpringBoneSimulator.new()
 		spring_sim.name = "Vrm1SpringBoneSimulator"

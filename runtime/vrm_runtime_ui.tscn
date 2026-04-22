@@ -1,0 +1,117 @@
+[gd_scene format=3 uid="uid://vrmruntimeui"]
+
+[ext_resource type="Script" path="res://runtime/vrm_runtime_ui.gd" id="1_script"]
+
+[node name="VrmRuntimeUI" type="CanvasLayer"]
+script = ExtResource("1_script")
+
+[node name="LeftPanel" type="Panel" parent="."]
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 300.0
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="LeftPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="LeftPanel/MarginContainer"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="LeftPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "VRM Runtime Loader"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="LeftPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="OpenButton" type="Button" parent="LeftPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Open VRM File"
+
+[node name="HSeparator2" type="HSeparator" parent="LeftPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="LeftPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Recent Models:"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="LeftPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RecentsList" type="VBoxContainer" parent="LeftPanel/MarginContainer/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="LeftPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Status: OK"
+autowrap_mode = 3
+
+[node name="RightPanel" type="Panel" parent="."]
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -330.0
+grow_horizontal = 0
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="RightPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="RightPanel/MarginContainer"]
+layout_mode = 2
+
+[node name="ExpTitle" type="Label" parent="RightPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Expressions"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="RightPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="NoModelLabel" type="Label" parent="RightPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "No model loaded."
+horizontal_alignment = 1
+
+[node name="ExpScroll" type="ScrollContainer" parent="RightPanel/MarginContainer/VBoxContainer"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ExpressionList" type="VBoxContainer" parent="RightPanel/MarginContainer/VBoxContainer/ExpScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="FileDialog" type="FileDialog" parent="."]
+title = "Open a File"
+initial_position = 2
+size = Vector2i(800, 600)
+ok_button_text = "Open"
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.vrm ; VRM Model")
+show_hidden_files = true

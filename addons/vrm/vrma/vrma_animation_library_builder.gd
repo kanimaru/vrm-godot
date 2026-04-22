@@ -6,62 +6,7 @@ extends RefCounted
 ## Bone rotations are normalized from the VRMA's own T-pose rest rotations so they can
 ## be applied to any VRM avatar with zero or near-zero rest rotations.
 
-# VRM bone name (camelCase) -> Godot skeleton bone name (PascalCase)
-const BONE_NAME_MAP: Dictionary = {
-	"hips": "Hips",
-	"spine": "Spine",
-	"chest": "Chest",
-	"upperChest": "UpperChest",
-	"neck": "Neck",
-	"head": "Head",
-	"jaw": "Jaw",
-	"leftUpperLeg": "LeftUpperLeg",
-	"leftLowerLeg": "LeftLowerLeg",
-	"leftFoot": "LeftFoot",
-	"leftToes": "LeftToes",
-	"rightUpperLeg": "RightUpperLeg",
-	"rightLowerLeg": "RightLowerLeg",
-	"rightFoot": "RightFoot",
-	"rightToes": "RightToes",
-	"leftShoulder": "LeftShoulder",
-	"leftUpperArm": "LeftUpperArm",
-	"leftLowerArm": "LeftLowerArm",
-	"leftHand": "LeftHand",
-	"rightShoulder": "RightShoulder",
-	"rightUpperArm": "RightUpperArm",
-	"rightLowerArm": "RightLowerArm",
-	"rightHand": "RightHand",
-	"leftThumbMetacarpal": "LeftThumbMetacarpal",
-	"leftThumbProximal": "LeftThumbProximal",
-	"leftThumbDistal": "LeftThumbDistal",
-	"leftIndexProximal": "LeftIndexProximal",
-	"leftIndexIntermediate": "LeftIndexIntermediate",
-	"leftIndexDistal": "LeftIndexDistal",
-	"leftMiddleProximal": "LeftMiddleProximal",
-	"leftMiddleIntermediate": "LeftMiddleIntermediate",
-	"leftMiddleDistal": "LeftMiddleDistal",
-	"leftRingProximal": "LeftRingProximal",
-	"leftRingIntermediate": "LeftRingIntermediate",
-	"leftRingDistal": "LeftRingDistal",
-	"leftLittleProximal": "LeftLittleProximal",
-	"leftLittleIntermediate": "LeftLittleIntermediate",
-	"leftLittleDistal": "LeftLittleDistal",
-	"rightThumbMetacarpal": "RightThumbMetacarpal",
-	"rightThumbProximal": "RightThumbProximal",
-	"rightThumbDistal": "RightThumbDistal",
-	"rightIndexProximal": "RightIndexProximal",
-	"rightIndexIntermediate": "RightIndexIntermediate",
-	"rightIndexDistal": "RightIndexDistal",
-	"rightMiddleProximal": "RightMiddleProximal",
-	"rightMiddleIntermediate": "RightMiddleIntermediate",
-	"rightMiddleDistal": "RightMiddleDistal",
-	"rightRingProximal": "RightRingProximal",
-	"rightRingIntermediate": "RightRingIntermediate",
-	"rightRingDistal": "RightRingDistal",
-	"rightLittleProximal": "RightLittleProximal",
-	"rightLittleIntermediate": "RightLittleIntermediate",
-	"rightLittleDistal": "RightLittleDistal",
-}
+# No longer using a hardcoded map. We use the VRM role names (camelCase) directly.
 
 # VRM expression preset (camelCase) -> Vrm1ExpressionController property (snake_case)
 const EXPRESSION_NAME_MAP: Dictionary = {
@@ -140,7 +85,6 @@ static func _build_role_map(vrma: VrmaTopLevel) -> Dictionary:
 			map[node_idx] = {
 				"type": "bone",
 				"vrm_name": bone_name,
-				"godot_name": BONE_NAME_MAP.get(bone_name, ""),
 				"is_hips": bone_name == "hips",
 			}
 
@@ -283,11 +227,12 @@ static func _add_bone_tracks(
 	world_rests: Dictionary,
 	local_rests: Dictionary,
 ) -> void:
-	var godot_name: String = role.get("godot_name", "")
-	if godot_name.is_empty():
+	# Use the VRM role name (camelCase) — this is the actual bone name in VRM models.
+	var vrm_name: String = role.get("vrm_name", "")
+	if vrm_name.is_empty():
 		return
 
-	var target_path: NodePath = NodePath("%GeneralSkeleton:" + godot_name)
+	var target_path: NodePath = NodePath("%GeneralSkeleton:" + vrm_name)
 	var key_count: int = source.track_get_key_count(t)
 
 	if track_type == Animation.TYPE_ROTATION_3D:
