@@ -351,7 +351,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			var bone_name: String = gnode.original_name
 			if bone_name.is_empty():
 				bone_name = gnode.resource_name
-			humanoid_bone_map[vrm_bone_name] = bone_name
+			humanoid_bone_map[vrm_bone_name.to_lower()] = bone_name
 		root.set_meta("vrm_humanoid_bones", humanoid_bone_map)
 
 	var retargeter_script := load("res://addons/vrm/common/vrm_animation_retargeter.gd")

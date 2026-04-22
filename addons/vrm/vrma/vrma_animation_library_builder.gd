@@ -304,12 +304,13 @@ static func _add_lookat_tracks(source: Animation, t: int, out: Animation) -> voi
 # ---------------------------------------------------------------------------
 
 ## Normalize a bone rotation from source T-pose space into zero-rest-rotation space.
-## Strips the source model's rest rotation to get a pure delta quaternion.
-## Formula: local_rest⁻¹ * local_rot
+## Formula: W * L^-1 * local_rotation * W^-1
+## This correctly transforms the local rotation into Global Space, resolving any 
+## differences in the source bone's axes.
 static func _normalize_rotation(
 	local_rot: Quaternion, world_rest: Quaternion, local_rest: Quaternion
 ) -> Quaternion:
-	return local_rest.inverse() * local_rot
+	return world_rest * local_rest.inverse() * local_rot * world_rest.inverse()
 
 
 ## Decompose a quaternion into yaw (Y) and pitch (X) using Extrinsic ZXY order.

@@ -279,20 +279,25 @@ func _on_animation_selected(path: String) -> void:
 	if not library:
 		_ui.status_label.text = "Error: Failed to load VRMA at " + path
 		return
+	
+	# Create a unique copy so retargeting doesn't corrupt the cached resource or compound rotations.
+	var local_library: AnimationLibrary = library.duplicate(true)
+	
 	var player := _find_animation_player(_current_model)
 	if not player:
 		player = AnimationPlayer.new()
 		player.name = "AnimationPlayer"
 		_current_model.add_child(player)
 		player.owner = _current_model
+	
 	if player.has_animation_library(&"VRMA"):
 		player.remove_animation_library(&"VRMA")
-	player.add_animation_library(&"VRMA", library)
+	player.add_animation_library(&"VRMA", local_library)
 	
-	# Retarget bone paths in the library to match this specific avatar's skeleton.
-	_retarget_library_for_model(library, _current_model)
+	# Retarget bone paths in the local copy to match this specific avatar's skeleton.
+	_retarget_library_for_model(local_library, _current_model)
 	
-	var anims := library.get_animation_list()
+	var anims := local_library.get_animation_list()
 	if not anims.is_empty():
 		player.play("VRMA/" + str(anims[0]))
 		_ui.status_label.text = "Playing: " + path.get_file()
@@ -311,11 +316,25 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node) -> void
 		var b: String = skeleton.get_bone_name(i)
 		bone_names_lower[b.to_lower()] = b
 
-	# Pre-compute world rest rotations for all bones (needed for Step 2 of spec).
+	# Pre-compute skeleton base rotation (from parents like the GLTF root node).
+	# VRMA animations assume VRM 1.0 space (+Z forward). VRM 0.0 models are -Z forward 
+	# and lack Godot's automatic SkeletonProfile reorientation flip. 
+	# We manually inject a 180-degree Y rotation to fix the inverted X/Z axes for VRM 0.0.
+	var is_vrm0: bool = model.has_meta("vrm0_data")
+	var skeleton_rot := Quaternion(Vector3.UP, PI) if is_vrm0 else Quaternion.IDENTITY
+	
+	var root_node: Node = skeleton.get_parent()
+	while root_node != null and root_node is Node3D:
+		skeleton_rot = root_node.transform.basis.orthonormalized().get_rotation_quaternion() * skeleton_rot
+		root_node = root_node.get_parent()
+
+	# Pre-compute world rest rotations for all bones.
+	# This captures Godot's SkeletonProfileHumanoid reorientations (vital for VRM1)
+	# AND the physical world direction of the mesh (vital for VRM0).
 	var world_rests: Array[Quaternion] = []
 	world_rests.resize(skeleton.get_bone_count())
 	for i in range(skeleton.get_bone_count()):
-		world_rests[i] = _compute_bone_world_rest(skeleton, i)
+		world_rests[i] = _compute_bone_world_rest(skeleton, i, skeleton_rot)
 
 	for anim_name in library.get_animation_list():
 		var anim: Animation = library.get_animation(anim_name)
@@ -335,12 +354,16 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node) -> void
 			var resolved_name := ""
 			if skeleton.find_bone(bone_name) != -1:
 				resolved_name = bone_name
-			elif role_to_bone.has(bone_name):
-				resolved_name = role_to_bone[bone_name]
 			else:
-				var lower := bone_name.to_lower()
-				if bone_names_lower.has(lower):
-					resolved_name = bone_names_lower[lower]
+				# Try case-insensitive humanoid role metadata lookup
+				var bone_name_lower := bone_name.to_lower()
+				if role_to_bone.has(bone_name_lower):
+					resolved_name = role_to_bone[bone_name_lower]
+				
+				if resolved_name.is_empty():
+					# Try case-insensitive match against skeleton bone names
+					if bone_names_lower.has(bone_name_lower):
+						resolved_name = bone_names_lower[bone_name_lower]
 
 			if resolved_name.is_empty():
 				failed.append(bone_name)
@@ -352,32 +375,44 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node) -> void
 				fixed += 1
 
 			# --- Step B: Apply target rest pose (spec Step 2) ---
-			# B.LocalRotation = L_dst * W_dst⁻¹ * NLR * W_dst
-			if anim.track_get_type(i) != Animation.TYPE_ROTATION_3D:
-				continue
+			# Rotations: B.LocalRotation = L_dst * W_dst⁻¹ * NLR * W_dst
+			# Positions: B.LocalPosition = L_dst_pos + (W_dst_inv * NLR_pos)
 			var bone_idx := skeleton.find_bone(resolved_name)
-			if bone_idx < 0:
-				continue
-			var L_dst: Quaternion = skeleton.get_bone_rest(bone_idx).basis.get_rotation_quaternion()
-			var W_dst: Quaternion = world_rests[bone_idx]
-			var W_dst_inv: Quaternion = W_dst.inverse()
-			# Only apply if the rest is non-trivial (avoid unnecessary computation)
-			if L_dst.is_equal_approx(Quaternion.IDENTITY) and W_dst.is_equal_approx(Quaternion.IDENTITY):
-				continue
-			for k in range(anim.track_get_key_count(i)):
-				var nlr: Quaternion = anim.track_get_key_value(i, k)
-				anim.track_set_key_value(i, k, L_dst * W_dst_inv * nlr * W_dst)
+			if bone_idx >= 0:
+				if anim.track_get_type(i) == Animation.TYPE_ROTATION_3D:
+					var L_dst: Quaternion = skeleton.get_bone_rest(bone_idx).basis.orthonormalized().get_rotation_quaternion()
+					var W_dst: Quaternion = world_rests[bone_idx]
+					var W_dst_inv: Quaternion = W_dst.inverse()
+					if not (L_dst.is_equal_approx(Quaternion.IDENTITY) and W_dst.is_equal_approx(Quaternion.IDENTITY)):
+						for k in range(anim.track_get_key_count(i)):
+							var nlr: Quaternion = anim.track_get_key_value(i, k)
+							anim.track_set_key_value(i, k, L_dst * W_dst_inv * nlr * W_dst)
+							
+				elif anim.track_get_type(i) == Animation.TYPE_POSITION_3D:
+					var W_dst_inv: Quaternion = world_rests[bone_idx].inverse()
+					if not W_dst_inv.is_equal_approx(Quaternion.IDENTITY):
+						for k in range(anim.track_get_key_count(i)):
+							var pos: Vector3 = anim.track_get_key_value(i, k)
+							anim.track_set_key_value(i, k, W_dst_inv * pos)
+
+		# --- Step C: Expression Controller Retargeting (VRM 0.0 vs 1.0) ---
+		if is_vrm0:
+			for i in range(anim.get_track_count()):
+				var path_str: String = str(anim.track_get_path(i))
+				if "%Vrm1ExpressionController:" in path_str:
+					var new_path = path_str.replace("%Vrm1ExpressionController:", "%Vrm0ExpressionController:")
+					anim.track_set_path(i, NodePath(new_path))
 
 		print("VrmRuntimeLoader: '", anim_name, "' fixed=", fixed, " unresolved=", failed)
 
 
-func _compute_bone_world_rest(skeleton: Skeleton3D, bone_idx: int) -> Quaternion:
-	var rot: Quaternion = skeleton.get_bone_rest(bone_idx).basis.get_rotation_quaternion()
+func _compute_bone_world_rest(skeleton: Skeleton3D, bone_idx: int, skeleton_rot: Quaternion) -> Quaternion:
+	var rot: Quaternion = skeleton.get_bone_rest(bone_idx).basis.orthonormalized().get_rotation_quaternion()
 	var parent: int = skeleton.get_bone_parent(bone_idx)
 	while parent >= 0:
-		rot = skeleton.get_bone_rest(parent).basis.get_rotation_quaternion() * rot
+		rot = skeleton.get_bone_rest(parent).basis.orthonormalized().get_rotation_quaternion() * rot
 		parent = skeleton.get_bone_parent(parent)
-	return rot
+	return skeleton_rot * rot
 
 
 func _find_skeleton(node: Node) -> Skeleton3D:

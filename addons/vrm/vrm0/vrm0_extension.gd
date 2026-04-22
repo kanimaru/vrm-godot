@@ -199,11 +199,11 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	if vrm_top_level == null:
 		return OK
 
-	# VRM 0.0 models are defined with +Z as forward. 
-	# VRM 1.0 and Godot use -Z as forward.
-	# We rotate the root 180 degrees to align the avatar with the expected forward vector.
-	if root is Node3D:
-		root.rotate_y(PI)
+	# NOTE: Do NOT rotate the root here. Godot's GLTFDocument already converts
+	# the coordinate space from glTF (+Z forward) to Godot (-Z forward) for both
+	# VRM 0.0 models and .vrma files. A manual flip would misalign bone rests
+	# (which are baked at import time and don't change with parent node rotation)
+	# against the NLR rotations, inverting shoulders and elbows.
 	
 	# Store the parsed VRM data as node metadata so the EditorInspectorPlugin can access it.
 	root.set_meta("vrm0_data", vrm_top_level)
@@ -214,8 +214,25 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		var n: Node = stack.pop_back()
 		if n is Skeleton3D:
 			skeleton = n
+			skeleton.name = "GeneralSkeleton"
+			skeleton.unique_name_in_owner = true
 			break
 		stack.append_array(n.get_children(true))
+
+	# Store a vrm_role -> actual_bone_name lookup on the root so VrmaAnimationLibraryBuilder
+	# can retarget animations to this avatar's real bone names at import/runtime.
+	if vrm_top_level.humanoid != null:
+		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
+		var humanoid_bone_map: Dictionary[String, String] = {}
+		for bone_data: Vrm0Humanoid.Bone in vrm_top_level.humanoid.human_bones:
+			if bone_data.node < 0 or bone_data.node >= gltf_nodes.size():
+				continue
+			var gnode: GLTFNode = gltf_nodes[bone_data.node]
+			var bone_name: String = gnode.original_name
+			if bone_name.is_empty():
+				bone_name = gnode.resource_name
+			humanoid_bone_map[bone_data.bone.to_lower()] = bone_name
+		root.set_meta("vrm_humanoid_bones", humanoid_bone_map)
 
 	if skeleton != null and vrm_top_level.secondary_animation != null:
 		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
