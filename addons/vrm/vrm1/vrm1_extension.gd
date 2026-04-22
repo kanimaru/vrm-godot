@@ -344,6 +344,8 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		var n: Node = stack.pop_back()
 		if n is Skeleton3D:
 			skeleton = n
+			skeleton.name = "GeneralSkeleton"
+			skeleton.unique_name_in_owner = true
 			break
 		stack.append_array(n.get_children(true))
 
@@ -370,6 +372,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	if vrm_top_level.expressions != null:
 		expr_controller = Vrm1ExpressionController.new()
 		expr_controller.name = "Vrm1ExpressionController"
+		expr_controller.unique_name_in_owner = true
 		root.add_child(expr_controller, true)
 		expr_controller.owner = root
 		expr_controller.compile_vrm1_binds(vrm_top_level.expressions, state, root)
@@ -379,6 +382,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		if look_at_script != null:
 			var look_at_controller: Node = look_at_script.new()
 			look_at_controller.name = "Vrm1LookAtController"
+			look_at_controller.unique_name_in_owner = true
 			root.add_child(look_at_controller, true)
 			look_at_controller.owner = root
 			look_at_controller.setup(vrm_top_level.look_at, skeleton, expr_controller)
