@@ -10,6 +10,17 @@ const MAX_RECENTS: int = 10
 const MTOON_SHADER_PATH := "res://addons/vrm/shaders/mtoon.gdshader"
 const MTOON_OUTLINE_SHADER_PATH := "res://addons/vrm/shaders/mtoon_outline.gdshader"
 
+const VRM1_TO_VRM0_EXPRESSIONS: Dictionary = {
+	"happy": "joy",
+	"sad": "sorrow",
+	"relaxed": "fun",
+	"aa": "a",
+	"ih": "i",
+	"ou": "u",
+	"ee": "e",
+	"oh": "o"
+}
+
 var _recents: Array[String] = []
 var _current_model: Node = null
 var _expression_controller: Node = null
@@ -396,12 +407,13 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node) -> void
 							anim.track_set_key_value(i, k, W_dst_inv * pos)
 
 		# --- Step C: Expression Controller Retargeting (VRM 0.0 vs 1.0) ---
-		if is_vrm0:
-			for i in range(anim.get_track_count()):
-				var path_str: String = str(anim.track_get_path(i))
-				if "%Vrm1ExpressionController:" in path_str:
-					var new_path = path_str.replace("%Vrm1ExpressionController:", "%Vrm0ExpressionController:")
-					anim.track_set_path(i, NodePath(new_path))
+		for i in range(anim.get_track_count()):
+			var path_str: String = str(anim.track_get_path(i))
+			if "Vrm1ExpressionController:" in path_str and is_vrm0:
+				var prop_name := path_str.split(":")[1]
+				var target_prop: String = VRM1_TO_VRM0_EXPRESSIONS.get(prop_name, prop_name)
+				var new_path := "%Vrm0ExpressionController:" + target_prop
+				anim.track_set_path(i, NodePath(new_path))
 
 		print("VrmRuntimeLoader: '", anim_name, "' fixed=", fixed, " unresolved=", failed)
 

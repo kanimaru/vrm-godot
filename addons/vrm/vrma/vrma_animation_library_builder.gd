@@ -121,12 +121,17 @@ static func _build_name_to_idx(state: GLTFState) -> Dictionary:
 	var map: Dictionary = {}
 	var gltf_nodes: Array[GLTFNode] = state.get_nodes()
 	for i: int in range(gltf_nodes.size()):
-		var n: GLTFNode = gltf_nodes[i]
-		var name: String = n.original_name
-		if name.is_empty():
-			name = n.resource_name
-		if not name.is_empty():
-			map[name] = i
+		var scene_node: Node = state.get_scene_node(i)
+		if scene_node != null:
+			map[scene_node.name] = i
+		else:
+			var n: GLTFNode = gltf_nodes[i]
+			var name: String = n.original_name
+			if name.is_empty():
+				name = n.resource_name
+			if not name.is_empty():
+				map[name] = i
+				map[name.replace(".", "_")] = i
 	return map
 
 

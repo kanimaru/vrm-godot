@@ -23,8 +23,10 @@ func _import_post_parse(state: GLTFState) -> Error:
 	if vrma_dict.has("humanoid"):
 		top_level.humanoid = _parse_humanoid(vrma_dict["humanoid"])
 		
+	print("json: ", json)
 	if vrma_dict.has("expressions"):
 		top_level.expressions = _parse_expressions(vrma_dict["expressions"])
+		
 		
 	if vrma_dict.has("lookAt"):
 		top_level.look_at = _parse_look_at(vrma_dict["lookAt"])

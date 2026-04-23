@@ -256,6 +256,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	if vrm_top_level.blend_shape_master != null:
 		var expr_controller: Vrm0ExpressionController = Vrm0ExpressionController.new()
 		expr_controller.name = "Vrm0ExpressionController"
+		expr_controller.unique_name_in_owner = true
 		root.add_child(expr_controller, true)
 		expr_controller.owner = root
 		expr_controller.compile_vrm0_binds(vrm_top_level.blend_shape_master, state, root)
