@@ -199,11 +199,11 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	if vrm_top_level == null:
 		return OK
 
-	# NOTE: Do NOT rotate the root here. Godot's GLTFDocument already converts
-	# the coordinate space from glTF (+Z forward) to Godot (-Z forward) for both
-	# VRM 0.0 models and .vrma files. A manual flip would misalign bone rests
-	# (which are baked at import time and don't change with parent node rotation)
-	# against the NLR rotations, inverting shoulders and elbows.
+	# Rotate the root 180 degrees so the model faces Godot's standard -Z forward.
+	# The runtime retargeter's World Rest (W) math will pick up this rotation 
+	# and use it to correctly map +Z-forward VRMA animations to this -Z-forward model.
+	if root is Node3D:
+		root.rotate_y(PI)
 	
 	# Store the parsed VRM data as node metadata so the EditorInspectorPlugin can access it.
 	root.set_meta("vrm0_data", vrm_top_level)

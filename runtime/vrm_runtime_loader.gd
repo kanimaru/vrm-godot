@@ -273,7 +273,7 @@ func _update_animations_ui() -> void:
 		dir.list_dir_begin()
 		var file_name := dir.get_next()
 		while file_name != "":
-			if not dir.current_is_dir() and file_name.ends_with(".vrma"):
+			if not dir.current_is_dir() and (file_name.ends_with(".vrma") or file_name.ends_with(".bvh")):
 				var btn := Button.new()
 				btn.text = "▶ " + file_name.get_basename()
 				btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -286,7 +286,7 @@ func _on_animation_selected(path: String) -> void:
 	if not _current_model:
 		return
 	_ui.status_label.text = "Loading Animation: " + path.get_file() + "..."
-	var library: AnimationLibrary = VrmaLoader.load_animation_library(path)
+	var library: AnimationLibrary = VrmaLoader.load_animation_library(path) if path.ends_with(".vrma") else BvhLoader.load_animation_library(path)
 	if not library:
 		_ui.status_label.text = "Error: Failed to load VRMA at " + path
 		return
@@ -328,11 +328,8 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node) -> void
 		bone_names_lower[b.to_lower()] = b
 
 	# Pre-compute skeleton base rotation (from parents like the GLTF root node).
-	# VRMA animations assume VRM 1.0 space (+Z forward). VRM 0.0 models are -Z forward 
-	# and lack Godot's automatic SkeletonProfile reorientation flip. 
-	# We manually inject a 180-degree Y rotation to fix the inverted X/Z axes for VRM 0.0.
 	var is_vrm0: bool = model.has_meta("vrm0_data")
-	var skeleton_rot := Quaternion(Vector3.UP, PI) if is_vrm0 else Quaternion.IDENTITY
+	var skeleton_rot := Quaternion.IDENTITY
 	
 	var root_node: Node = skeleton.get_parent()
 	while root_node != null and root_node is Node3D:
