@@ -9,12 +9,13 @@ class_name VrmAnimationRetargeter
 @export var animation_player: AnimationPlayer
 @export var skeleton: Skeleton3D
 
+
 func _ready() -> void:
 	# Use push_warning to ensure it shows up in the Godot Output tab
 	push_warning("[VRM Retargeter] Ready on node: " + name)
 	
-	if Engine.is_editor_hint() and not get_viewport() is Window:
-		return
+	#if Engine.is_editor_hint() and not get_viewport() is Window:
+		#return
 	
 	if skeleton == null:
 		skeleton = _find_skeleton(get_parent())
@@ -36,6 +37,7 @@ func _ready() -> void:
 	else:
 		_setup_signal()
 
+
 func _setup_signal() -> void:
 	if animation_player.has_signal("animation_libraries_updated"):
 		if not animation_player.is_connected("animation_libraries_updated", _retarget_all_animations):
@@ -43,12 +45,14 @@ func _setup_signal() -> void:
 	
 	_retarget_all_animations()
 
+
 func _find_skeleton(node: Node) -> Skeleton3D:
 	if node is Skeleton3D: return node
 	for child in node.get_children(true):
 		var res = _find_skeleton(child)
 		if res: return res
 	return null
+
 
 func _find_animation_player_anywhere(node: Node) -> AnimationMixer:
 	# 1. Search children
@@ -62,6 +66,7 @@ func _find_animation_player_anywhere(node: Node) -> AnimationMixer:
 		p = p.get_parent()
 	return null
 
+
 func _find_animation_player_recursive(node: Node) -> AnimationMixer:
 	if node is AnimationMixer: return node
 	for child in node.get_children(true):
@@ -69,10 +74,11 @@ func _find_animation_player_recursive(node: Node) -> AnimationMixer:
 		if res: return res
 	return null
 
+
 func _retarget_all_animations() -> void:
 	var root: Node = get_parent()
 	var role_to_bone: Dictionary = root.get_meta("vrm_humanoid_bones", {})
-	
+	print("role_to_bone: ", role_to_bone)
 	push_warning("[VRM Retargeter] Starting retargeting for avatar: " + root.name)
 
 	# Build a case-insensitive lookup for the skeleton
@@ -87,6 +93,7 @@ func _retarget_all_animations() -> void:
 		for anim_name in lib.get_animation_list():
 			var anim: Animation = lib.get_animation(anim_name)
 			_retarget_animation(anim, role_to_bone, bone_names_lower)
+
 
 func _retarget_animation(anim: Animation, role_to_bone: Dictionary, bone_names_lower: Dictionary) -> void:
 	var fixed_count: int = 0
@@ -129,6 +136,7 @@ func _retarget_animation(anim: Animation, role_to_bone: Dictionary, bone_names_l
 
 	if fixed_count > 0:
 		push_warning("[VRM Retargeter] Fixed " + str(fixed_count) + "/" + str(total_bone_tracks) + " tracks in animation: " + anim.resource_name)
+
 
 func _update_track_path(anim: Animation, track_idx: int, path_parts: Array, new_bone_name: String) -> void:
 	path_parts[1] = new_bone_name

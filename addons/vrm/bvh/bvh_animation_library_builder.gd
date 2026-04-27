@@ -87,12 +87,22 @@ static func build(bvh_data: BvhParser.BvhData, fps: float = 30.0, scale_factor: 
 		if node.is_end_site:
 			continue
 			
-		var target_name = node.name
+		var node_name = _strip_prefix(node.name)
+		var target_name = node_name
+		
 		if use_map:
-			if map.has(node.name):
-				target_name = map[node.name]
+			if map.has(node_name):
+				target_name = map[node_name]
 			else:
-				continue # Skip unmapped bones to avoid polluting the animation
+				# Try fuzzy match if exact match fails
+				var matched = false
+				for key in map.keys():
+					if node_name.to_lower() == key.to_lower():
+						target_name = map[key]
+						matched = true
+						break
+				if not matched:
+					continue
 				
 		var path = NodePath("%GeneralSkeleton:" + target_name)
 		
@@ -122,8 +132,16 @@ static func build(bvh_data: BvhParser.BvhData, fps: float = 30.0, scale_factor: 
 				var rot = _extract_rotation(node, frame_data)
 				anim.track_insert_key(rot_track, f * frame_time, rot)
 				
+	print("BvhBuilder: Created animation 'Take 001' with ", anim.get_track_count(), " tracks.")
 	library.add_animation("Take 001", anim)
 	return library
+
+
+static func _strip_prefix(n: String) -> String:
+	var idx = n.find(":")
+	if idx != -1:
+		return n.substr(idx + 1)
+	return n
 
 static func _extract_position(node: BvhParser.BvhNode, frame_data: PackedFloat32Array) -> Vector3:
 	var pos = node.offset # Base offset

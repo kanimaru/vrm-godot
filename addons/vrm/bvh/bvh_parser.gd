@@ -18,14 +18,17 @@ class BvhData:
 	var motion_data: Array = [] # Array of PackedFloat32Array
 
 static func parse_file(path: String) -> BvhData:
+	print("BvhParser: Opening file: ", path)
 	var f = FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		printerr("BvhParser: Failed to open BVH file: ", path)
 		return null
 	var content = f.get_as_text()
+	print("BvhParser: File size: ", content.length(), " chars")
 	return parse(content)
 
 static func parse(content: String) -> BvhData:
+	print("BvhParser: Starting parse...")
 	var data = BvhData.new()
 	
 	# Pre-process content to space out brackets and normalize whitespace

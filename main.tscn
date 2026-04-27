@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" uid="uid://cw6itd8l7uiyt" path="res://assets/tester/tester-vrm0.0.vrm" id="2_lquwl"]
 [ext_resource type="PackedScene" uid="uid://c0eo5uq82ex4s" path="res://assets/tester/tester-vrm1.0.vrm" id="3_7mycd"]
 [ext_resource type="AnimationLibrary" uid="uid://dfsx1hlnrdxw4" path="res://assets/VRMA/VRMA_01.vrma" id="3_272bh"]
+[ext_resource type="AnimationLibrary" uid="uid://4pxlqkcs7c4n" path="res://assets/VRMA/admiration.bvh" id="4_5vw27"]
 [ext_resource type="PackedScene" uid="uid://dwp7ll1f6xf2h" path="res://assets/temptic/model.vrm" id="4_272bh"]
 
 [node name="Node3D" type="Node3D" unique_id=729613782]
@@ -13,24 +14,24 @@ script = ExtResource("1_lquwl")
 [node name="luna" parent="." unique_id=472955867 instance=ExtResource("1_1bvp3")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.4560711, 0, 0)
 
-[node name="GeneralSkeleton" parent="luna" index="0" unique_id=1388366590]
-bones/1/position = Vector3(0.008756, 0.8673281, 0.054661002)
-bones/1/rotation = Quaternion(-0.014081971, -0.019873489, -0.00896949, 0.9996631)
-bones/2/rotation = Quaternion(-0.001031123, 0.003978045, 0.00443561, 0.9999817)
-bones/3/rotation = Quaternion(-0.0020685792, 0.0077564786, 0.008870648, 0.9999285)
-bones/4/rotation = Quaternion(0.021758847, 0.014837313, -0.0070638983, 0.99962825)
-bones/5/rotation = Quaternion(0.055261545, 0.02765939, -0.0015175127, 0.99808764)
+[node name="GeneralSkeleton" parent="luna" index="0" unique_id=1371329640]
+bones/1/position = Vector3(0.0004905464, 0.10411686, 0.0141776465)
+bones/1/rotation = Quaternion(-0.008429793, 0.012781455, -0.047003966, 0.99877745)
+bones/2/rotation = Quaternion(0.011047489, -0.0104046445, 0.026322145, 0.9995383)
+bones/3/rotation = Quaternion(0.012759326, 0.009791694, 0.10272489, 0.9945798)
+bones/4/rotation = Quaternion(0.009170458, -0.0027301149, -0.018872937, 0.9997761)
+bones/5/rotation = Quaternion(0.013458727, 0.0048017255, -0.07097431, 0.99737585)
 
-[node name="head" parent="luna/GeneralSkeleton" index="0" unique_id=1742874886]
-transform = Transform3D(0.99759215, 0.0137065165, 0.06798706, -0.005494512, 0.99281466, -0.11953385, -0.069136955, 0.11887247, 0.99049944, 0.011472067, 1.6260483, 0.033077348)
+[node name="head" parent="luna/GeneralSkeleton" index="0" unique_id=1492371500]
+transform = Transform3D(0.99929464, 0.017030282, 0.033471603, -0.014498778, 0.9971175, -0.074470684, -0.03464339, 0.07393286, 0.9966611, -0.037748493, 0.85715735, 0.026383525)
 
-[node name="chest" parent="luna/GeneralSkeleton" index="1" unique_id=839460883]
-transform = Transform3D(0.99984074, -0.007936999, -0.01598934, 0.008486559, 0.9993651, 0.03460139, 0.015704561, -0.034731574, 0.9992732, 0.013703827, 1.2335585, 0.04398057)
+[node name="chest" parent="luna/GeneralSkeleton" index="1" unique_id=224668604]
+transform = Transform3D(0.98627275, -0.16319396, 0.025177382, 0.16390273, 0.9860425, -0.029258521, -0.020051153, 0.032983534, 0.99925464, 0.023963701, 0.46963593, 0.012321981)
 
-[node name="spine" parent="luna/GeneralSkeleton" index="2" unique_id=189150241]
-transform = Transform3D(0.99945664, 0.009701088, -0.031501606, -0.008741166, 0.99949735, 0.030468265, 0.031781353, -0.030176347, 0.9990391, 0.011686369, 1.025701, 0.050256103)
+[node name="spine" parent="luna/GeneralSkeleton" index="2" unique_id=1410561486]
+transform = Transform3D(0.99913055, 0.041492667, 0.004069686, -0.04147219, 0.99912703, -0.004996393, -0.00427345, 0.004823275, 0.99997914, 0.0153348, 0.26185542, 0.011318922)
 
-[node name="Vrm1SpringBoneSimulator" parent="luna/GeneralSkeleton" index="63" unique_id=2053713045]
+[node name="Vrm1SpringBoneSimulator" parent="luna/GeneralSkeleton" index="63" unique_id=840750017]
 setting_count = 73
 settings/0/root_bone_name = "ear.R.002"
 settings/0/root_bone = 15
@@ -2691,15 +2692,16 @@ settings/72/joints/4/gravity_direction = Vector3(0, -1, 0)
 settings/72/enable_all_child_collisions = true
 settings/72/exclude_collision_count = 0
 
-[node name="VrmAnimationRetargeter" parent="luna" index="1" unique_id=1903341983 node_paths=PackedStringArray("animation_player", "skeleton")]
+[node name="VrmAnimationRetargeter" parent="luna" index="1" unique_id=1788546528 node_paths=PackedStringArray("animation_player", "skeleton")]
 animation_player = NodePath("../AnimationPlayer")
 skeleton = NodePath("../GeneralSkeleton")
 
-[node name="Vrm1ExpressionController" parent="luna" index="2" unique_id=610464072]
+[node name="Vrm1ExpressionController" parent="luna" index="2" unique_id=278758315]
 happy = 0.291
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="luna" unique_id=1320566032]
 libraries/VRMA_01 = ExtResource("3_272bh")
+libraries/admiration = ExtResource("4_5vw27")
 
 [node name="tester-vrm0_0" parent="." unique_id=91094157 instance=ExtResource("2_lquwl")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3534722, 0, -0.77055883)
@@ -2710,7 +2712,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.4980607, 0, -0.63635206)
 [node name="model" parent="." unique_id=309519864 instance=ExtResource("4_272bh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3700836, 0, 1.0968161)
 
-[node name="Vrm0SpringBoneSimulator" parent="model/GeneralSkeleton" parent_id_path=PackedInt32Array(309519864, 149016784) index="6" unique_id=1776636181]
+[node name="Vrm0SpringBoneSimulator" parent="model/GeneralSkeleton" parent_id_path=PackedInt32Array(309519864, 429384807) index="6" unique_id=832167756]
 setting_count = 43
 settings/0/root_bone_name = "ear.R"
 settings/0/root_bone = 8
