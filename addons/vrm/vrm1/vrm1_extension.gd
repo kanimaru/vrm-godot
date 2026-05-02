@@ -5,6 +5,7 @@ class_name Vrm1Extension
 ## Handles VRM 1.0 avatars (VRMC_vrm, VRMC_materials_mtoon, VRMC_springBone).
 
 const VrmMtoonBuilder = preload("../common/vrm_mtoon_builder.gd")
+const VRMUtil = preload("../common/vrm_util.gd")
 
 
 func _get_supported_extensions() -> PackedStringArray:
@@ -336,7 +337,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		return OK
 
 	# Store the parsed VRM data as node metadata so the EditorInspectorPlugin can access it.
-	root.set_meta("vrm1_data", vrm_top_level)
+	VRMUtil.set_vrm1_data(root, vrm_top_level)
 
 	# Store a vrm_role -> actual_bone_name lookup on the root so VrmaAnimationLibraryBuilder
 	# can retarget animations to this avatar's real bone names at import/runtime.
@@ -352,7 +353,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			if bone_name.is_empty():
 				bone_name = gnode.resource_name
 			humanoid_bone_map[vrm_bone_name.to_lower()] = bone_name
-		root.set_meta("vrm_humanoid_bones", humanoid_bone_map)
+		VRMUtil.set_humanoid_bone_map(root, humanoid_bone_map)
 
 	var retargeter_script := load("res://addons/vrm/common/vrm_animation_retargeter.gd")
 	if retargeter_script != null:
@@ -361,14 +362,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		retargeter.name = "VrmAnimationRetargeter"
 		
 		# Find the animation player to link it
-		var anim_player: AnimationMixer = null
-		var p_stack: Array[Node] = [root]
-		while not p_stack.is_empty():
-			var p_node: Node = p_stack.pop_back()
-			if p_node is AnimationMixer:
-				anim_player = p_node
-				break
-			p_stack.append_array(p_node.get_children(true))
+		var anim_player: AnimationMixer = VRMUtil.find_animation_player(root)
 		
 		if anim_player != null:
 			retargeter.animation_player = anim_player
@@ -376,16 +370,10 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		root.add_child(retargeter, true)
 		retargeter.owner = root
 
-	var skeleton: Skeleton3D = null
-	var stack: Array[Node] = [root]
-	while not stack.is_empty():
-		var n: Node = stack.pop_back()
-		if n is Skeleton3D:
-			skeleton = n
-			skeleton.name = "GeneralSkeleton"
-			skeleton.unique_name_in_owner = true
-			break
-		stack.append_array(n.get_children(true))
+	var skeleton: Skeleton3D = VRMUtil.find_skeleton(root)
+	if skeleton != null:
+		skeleton.name = "GeneralSkeleton"
+		skeleton.unique_name_in_owner = true
 
 
 	if skeleton != null and vrm_top_level.spring_bone != null:

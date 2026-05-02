@@ -1,6 +1,7 @@
 @tool
 class_name VrmaAnimationLibraryBuilder
 extends RefCounted
+const VRMUtil = preload("../common/vrm_util.gd")
 
 ## Converts a raw VRMA GLTFState + generated scene into a retargeted AnimationLibrary.
 ## Bone rotations are normalized from the VRMA's own T-pose rest rotations so they can
@@ -46,7 +47,7 @@ static func build(state: GLTFState, scene: Node) -> AnimationLibrary:
 	var world_rests: Dictionary = _compute_world_rest_rotations(state)
 	var local_rests: Dictionary = _get_local_rest_rotations(state)
 
-	var anim_player: AnimationPlayer = _find_animation_player(scene)
+	var anim_player: AnimationPlayer = VRMUtil.find_animation_player(scene)
 	if anim_player == null:
 		push_warning("VrmaAnimationLibraryBuilder: No AnimationPlayer in VRMA scene.")
 		return AnimationLibrary.new()
@@ -164,14 +165,6 @@ static func _compute_world_rest_rotations(state: GLTFState) -> Dictionary:
 # Scene helpers
 # ---------------------------------------------------------------------------
 
-static func _find_animation_player(node: Node) -> AnimationPlayer:
-	if node is AnimationPlayer:
-		return node as AnimationPlayer
-	for child: Node in node.get_children():
-		var result: AnimationPlayer = _find_animation_player(child)
-		if result:
-			return result
-	return null
 
 
 # ---------------------------------------------------------------------------

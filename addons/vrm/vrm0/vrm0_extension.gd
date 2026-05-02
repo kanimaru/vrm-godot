@@ -7,6 +7,7 @@ class_name Vrm0Extension
 
 const m_bind_script = preload("structures/vrm0_material_bind.gd")
 const VrmMtoonBuilder = preload("../common/vrm_mtoon_builder.gd")
+const VRMUtil = preload("../common/vrm_util.gd")
 
 
 func _get_supported_extensions() -> PackedStringArray:
@@ -206,18 +207,12 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		root.rotate_y(PI)
 	
 	# Store the parsed VRM data as node metadata so the EditorInspectorPlugin can access it.
-	root.set_meta("vrm0_data", vrm_top_level)
+	VRMUtil.set_vrm0_data(root, vrm_top_level)
 
-	var skeleton: Skeleton3D = null
-	var stack: Array[Node] = [root]
-	while not stack.is_empty():
-		var n: Node = stack.pop_back()
-		if n is Skeleton3D:
-			skeleton = n
-			skeleton.name = "GeneralSkeleton"
-			skeleton.unique_name_in_owner = true
-			break
-		stack.append_array(n.get_children(true))
+	var skeleton: Skeleton3D = VRMUtil.find_skeleton(root)
+	if skeleton != null:
+		skeleton.name = "GeneralSkeleton"
+		skeleton.unique_name_in_owner = true
 
 	# Store a vrm_role -> actual_bone_name lookup on the root so VrmaAnimationLibraryBuilder
 	# can retarget animations to this avatar's real bone names at import/runtime.
@@ -232,7 +227,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			if bone_name.is_empty():
 				bone_name = gnode.resource_name
 			humanoid_bone_map[bone_data.bone.to_lower()] = bone_name
-		root.set_meta("vrm_humanoid_bones", humanoid_bone_map)
+		VRMUtil.set_humanoid_bone_map(root, humanoid_bone_map)
 
 	if skeleton != null and vrm_top_level.secondary_animation != null:
 		var gltf_nodes: Array[GLTFNode] = state.get_nodes()

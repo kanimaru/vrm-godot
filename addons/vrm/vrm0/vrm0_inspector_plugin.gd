@@ -1,6 +1,7 @@
 @tool
 extends EditorInspectorPlugin
 class_name Vrm0InspectorPlugin
+const VRMUtil = preload("../common/vrm_util.gd")
 
 ## EditorInspectorPlugin for VRM 0.0 models.
 ## Injects a read-only Vrm0InspectorPanel at the top of the Inspector
@@ -8,12 +9,12 @@ class_name Vrm0InspectorPlugin
 
 
 func _can_handle(object: Object) -> bool:
-	return object is Node and (object as Node).has_meta("vrm0_data")
+	return object is Node and VRMUtil.is_vrm0(object as Node)
 
 
 func _parse_begin(object: Object) -> void:
 	var node := object as Node
-	var data := node.get_meta("vrm0_data") as Vrm0TopLevel
+	var data := VRMUtil.get_vrm0_data(node)
 	if data == null:
 		return
 	

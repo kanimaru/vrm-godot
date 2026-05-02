@@ -7,8 +7,9 @@ extends Node3D
 
 const CONFIG_PATH: String = "user://vrm_recents.cfg"
 const MAX_RECENTS: int = 10
-const MTOON_SHADER_PATH := "res://addons/vrm/shaders/mtoon.gdshader"
-const MTOON_OUTLINE_SHADER_PATH := "res://addons/vrm/shaders/mtoon_outline.gdshader"
+const MTOON_SHADER_PATH: String = "res://addons/vrm/shaders/mtoon.gdshader"
+const MTOON_OUTLINE_SHADER_PATH: String = "res://addons/vrm/shaders/mtoon_outline.gdshader"
+const VRMUtil = preload("res://addons/vrm/common/vrm_util.gd")
 
 const VRM1_TO_VRM0_EXPRESSIONS: Dictionary = {
 	"happy": "joy",
@@ -31,17 +32,53 @@ var _mtoon_outline_materials: Dictionary[ShaderMaterial, ShaderMaterial] = {}
 @onready var _model_anchor: Node3D = $ModelAnchor
 @onready var _world_env: WorldEnvironment = $WorldEnvironment
 
+var _is_animation_paused: bool = false
+
+var _vmd_motion_path: String = ""
+var _vmd_camera_path: String = ""
+var _vmd_audio_path: String = ""
+var _file_dialog_mode: String = "vrm"
+
+## Set to true while a VMD dance with root motion is playing.
+var _vmd_root_motion_active: bool = false
+## The AnimationPlayer driving the current VMD animation (for root motion polling).
+var _vmd_player: AnimationPlayer = null
+## Active debug skeleton visualizer (raw VMD motion, no retargeting).
+var _debug_skeleton: Node3D = null
+
+@onready var _vmd_camera: Camera3D = Camera3D.new()
+@onready var _audio_player: AudioStreamPlayer = AudioStreamPlayer.new()
+
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
 
+	# Setup Nodes
+	_vmd_camera.name = "VmdCamera"
+	_vmd_camera.unique_name_in_owner = true
+	add_child(_vmd_camera)
+	_vmd_camera.owner = self
+	_vmd_camera.transform.origin = Vector3(0, 1.5, 4) # Default position
+
+	_audio_player.name = "VmdAudioPlayer"
+	add_child(_audio_player)
+
 	# Connect signals
 	_ui.open_button.pressed.connect(_on_open_vrm_pressed)
 	_ui.file_dialog.file_selected.connect(_on_file_dialog_file_selected)
+	_ui.stop_button.pressed.connect(_on_stop_animation_pressed)
+	_ui.pause_button.pressed.connect(_on_pause_animation_pressed)
 
-	# Setup UI
+	# Connect modular VMD tab
 	_ui.setup_tabs()
+	_ui.vmd_tab.get_motion_btn().pressed.connect(_on_vmd_slot_pressed.bind("motion"))
+	_ui.vmd_tab.get_camera_btn().pressed.connect(_on_vmd_slot_pressed.bind("camera"))
+	_ui.vmd_tab.get_audio_btn().pressed.connect(_on_vmd_slot_pressed.bind("audio"))
+	_ui.vmd_tab.play_pressed.connect(_on_play_dance_pressed)
+	_ui.vmd_tab.dance_folder_selected.connect(_on_dance_folder_selected)
+	_ui.vmd_tab.debug_skeleton_pressed.connect(_on_debug_skeleton_pressed)
+
 	_update_animations_ui()
 
 	# Register extensions for runtime loading
@@ -52,47 +89,308 @@ func _ready() -> void:
 	_ui.status_label.text = "Select a VRM model to load."
 
 
+func _physics_process(_delta: float) -> void:
+	if not _vmd_root_motion_active or not _vmd_player:
+		return
+	if not _vmd_player.is_playing():
+		return
+	# Accumulate root motion delta onto the model anchor each physics tick.
+	var motion: Vector3 = _vmd_player.get_root_motion_position()
+	var rot: Quaternion = _vmd_player.get_root_motion_rotation()
+	_model_anchor.global_transform.basis = (
+		Basis(rot) * _model_anchor.global_transform.basis
+	)
+	_model_anchor.global_transform.origin += (
+		_model_anchor.global_transform.basis * motion
+	)
+
+
 func _process(_delta: float) -> void:
-	# Reserved for future per-frame GI / outline updates.
-	pass
+	if not _current_model: return
+	var player: AnimationPlayer = VRMUtil.find_animation_player(_current_model)
+	if not player: return
+
+	var current_time: float = player.current_animation_position
+	if player.is_playing() or _is_animation_paused:
+		var frame: int = int(current_time * 30.0)
+		_ui.frame_label.text = "Frame: %d" % frame
+
+	# Sync debug skeleton
+	if _debug_skeleton and _debug_skeleton.has_node("DebugPlayer"):
+		var debug_player: AnimationPlayer = _debug_skeleton.get_node("DebugPlayer")
+		if debug_player.current_animation == "vmd_debug":
+			if player.is_playing() and not debug_player.is_playing():
+				debug_player.play()
+			elif not player.is_playing() and debug_player.is_playing():
+				debug_player.pause()
+
+			if abs(debug_player.current_animation_position - current_time) > 0.05:
+				debug_player.seek(current_time, true)
+
+
+func _on_vmd_slot_pressed(mode: String) -> void:
+	_file_dialog_mode = mode
+	_ui.file_dialog.filters = ["*.vmd ; VMD Motion"] if mode != "audio" else ["*.wav, *.mp3, *.ogg ; Audio"]
+	_ui.file_dialog.popup_centered_ratio(0.8)
+
+
+func _on_open_vrm_pressed() -> void:
+	_file_dialog_mode = "vrm"
+	_ui.file_dialog.filters = ["*.vrm ; VRM Avatar"]
+	_ui.file_dialog.popup_centered_ratio(0.8)
+
+
+func _on_file_dialog_file_selected(path: String) -> void:
+	match _file_dialog_mode:
+		"vrm":
+			load_vrm(path)
+		"motion":
+			_vmd_motion_path = path
+			_ui.vmd_tab.update_slot("motion", path)
+		"camera":
+			_vmd_camera_path = path
+			_ui.vmd_tab.update_slot("camera", path)
+		"audio":
+			_vmd_audio_path = path
+			_ui.vmd_tab.update_slot("audio", path)
+
+
+func _on_dance_folder_selected(folder_path: String) -> void:
+	if not folder_path.ends_with("/"): folder_path += "/"
+
+	_ui.status_label.text = "Scanning dance folder..."
+
+	var dir: DirAccess = DirAccess.open(folder_path)
+	if not dir: return
+
+	var vmd_files: Array[String] = []
+	var audio_file: String = ""
+
+	dir.list_dir_begin()
+	var file_name: String = dir.get_next()
+	while file_name != "":
+		if not dir.current_is_dir():
+			if file_name.ends_with(".vmd"):
+				vmd_files.append(folder_path + file_name)
+			elif file_name.ends_with(".wav") or file_name.ends_with(".mp3") or file_name.ends_with(".ogg"):
+				if audio_file.is_empty():
+					audio_file = folder_path + file_name
+		file_name = dir.get_next()
+
+	# Identify VMD contents
+	var motion_vmd: String = ""
+	var camera_vmd: String = ""
+
+	for vmd_path: String in vmd_files:
+		var data: VmdParser.VmdData = VmdParser.parse_file(vmd_path)
+		if data:
+			if data.camera_frames.size() > 0:
+				camera_vmd = vmd_path
+			elif data.bone_frames.size() > 0:
+				motion_vmd = vmd_path
+
+	if motion_vmd.is_empty() and not vmd_files.is_empty():
+		motion_vmd = vmd_files[0] # Fallback
+
+	# Update slots and paths
+	_vmd_motion_path = motion_vmd
+	_vmd_camera_path = camera_vmd
+	_vmd_audio_path = audio_file
+
+	_ui.vmd_tab.update_slot("motion", motion_vmd)
+	_ui.vmd_tab.update_slot("camera", camera_vmd)
+	_ui.vmd_tab.update_slot("audio", audio_file)
+
+	_on_play_dance_pressed()
+
+
+func _on_debug_skeleton_pressed() -> void:
+	# Toggle: if already showing, remove it.
+	if _debug_skeleton != null:
+		_debug_skeleton.queue_free()
+		_debug_skeleton = null
+		_ui.status_label.text = "Debug skeleton hidden."
+		return
+
+	if _vmd_motion_path.is_empty():
+		_ui.status_label.text = "Error: Select a motion VMD first."
+		return
+
+	_ui.status_label.text = "Parsing VMD for debug skeleton..."
+
+	const VmdParser = preload("res://addons/vrm/vmd/vmd_parser.gd")
+	const VmdDebugSkeleton = preload("res://addons/vrm/vmd/vmd_debug_skeleton.gd")
+
+	var vmd_data: VmdParser.VmdData = VmdParser.parse_file(_vmd_motion_path)
+	if vmd_data == null:
+		_ui.status_label.text = "Error: Failed to parse VMD."
+		return
+
+	_debug_skeleton = VmdDebugSkeleton.new()
+	_debug_skeleton.name = "VmdDebugSkeleton"
+	# Place the debug skeleton slightly to the side of the model so both are visible.
+	_debug_skeleton.position = Vector3(1.5, 0.0, 0.0)
+	add_child(_debug_skeleton)
+	(_debug_skeleton as VmdDebugSkeleton).setup(vmd_data)
+
+	_ui.status_label.text = "Debug skeleton active. Press again to hide."
+
+
+func _on_play_dance_pressed() -> void:
+	if not _current_model:
+		_ui.status_label.text = "Error: Load a VRM model first."
+		return
+
+	if _vmd_motion_path.is_empty():
+		_ui.status_label.text = "Error: Select a motion VMD first."
+		return
+
+	_ui.status_label.text = "Loading Dance Package..."
+	var y_offset: float = _ui.vmd_tab.camera_y_offset
+	var a_pose: bool = _ui.vmd_tab.a_pose_vmd_mode
+	var debug_ik: bool = _ui.vmd_tab.debug_ik
+
+	# 1. Load Motion
+	var position_scale: float = 0.08
+	var skeleton: Skeleton3D = VRMUtil.find_skeleton(_current_model)
+	if skeleton:
+		var head_name: String = VRMUtil.find_bone(skeleton, _current_model, "head")
+		var head_idx: int = skeleton.find_bone(head_name)
+		if head_idx != -1:
+			var head_height: float = skeleton.get_bone_global_rest(head_idx).origin.y
+			# Heuristic: MMD models are roughly 1.58m tall, mapping to ~15.8 units.
+			# Scale factor = ModelHeight / 15.8.
+			position_scale = head_height / 15.8
+
+	var motion_lib: AnimationLibrary = VmdLoader.load_animation_library(_vmd_motion_path, 30.0, y_offset, a_pose, position_scale)
+	if not motion_lib: return
+
+	var main_anim: Animation = motion_lib.get_animation("default").duplicate()
+
+	# 2. Load Camera
+	if not _vmd_camera_path.is_empty():
+		var cam_lib: AnimationLibrary = VmdLoader.load_animation_library(_vmd_camera_path, 30.0, y_offset, a_pose)
+		if cam_lib:
+			var cam_anim: Animation = cam_lib.get_animation("default")
+			for i: int in range(cam_anim.get_track_count()):
+				cam_anim.copy_track(i, main_anim)
+
+	# 3. Load Audio
+	if not _vmd_audio_path.is_empty():
+		var stream: AudioStream = load(_vmd_audio_path)
+		if stream:
+			_audio_player.stream = stream
+
+	# 4. Setup AnimationPlayer and enable root motion
+	var player: AnimationPlayer = VRMUtil.find_animation_player(_current_model)
+	if not player:
+		player = AnimationPlayer.new()
+		player.name = "AnimationPlayer"
+		_current_model.add_child(player)
+		player.owner = _current_model
+
+	var final_lib: AnimationLibrary = AnimationLibrary.new()
+	final_lib.add_animation("dance", main_anim)
+
+	if player.has_animation_library(&"VMD"):
+		player.remove_animation_library(&"VMD")
+	player.add_animation_library(&"VMD", final_lib)
+
+	_retarget_library_for_model(final_lib, _current_model, true)
+
+	# Enable root motion: the %ModelRoot track (from 全ての親) drives world locomotion.
+	# Reset anchor first so locomotion starts from the current position.
+	_model_anchor.transform = Transform3D.IDENTITY
+	var has_root_motion: bool = false
+	for i: int in range(main_anim.get_track_count()):
+		if "%ModelRoot" in str(main_anim.track_get_path(i)):
+			has_root_motion = true
+			break
+	if has_root_motion:
+		player.root_motion_track = player.get_path_to(%ModelRoot)
+		_vmd_root_motion_active = true
+	else:
+		player.root_motion_track = NodePath("")
+		_vmd_root_motion_active = false
+	_vmd_player = player
+
+	# Enable IK if needed
+	var ik_controller: Node = _current_model.get_node_or_null("VrmIkController")
+	if ik_controller:
+		var has_ik: bool = false
+		for i: int in range(main_anim.get_track_count()):
+			var path: String = str(main_anim.track_get_path(i))
+			if "leftLegIk" in path or "rightLegIk" in path:
+				has_ik = true
+				break
+		ik_controller.enabled = has_ik
+		ik_controller.debug = debug_ik
+
+	_vmd_camera.transform.origin = Vector3(0, 1.5, 4) # Default position
+
+	_is_animation_paused = false
+	player.play("VMD/dance")
+	if _audio_player.stream:
+		_audio_player.stream_paused = false
+		_audio_player.play()
+
+	_sync_pause_buttons(false)
+
+	_vmd_camera.make_current()
+	_ui.status_label.text = "Dancing!"
 
 
 func load_vrm(path: String) -> void:
 	if not FileAccess.file_exists(path):
 		_ui.status_label.text = "Error: File does not exist at " + path
 		return
-		
+
 	_ui.status_label.text = "Loading: " + path.get_file() + "..."
-	
+
 	# Clear current model
 	if _current_model:
 		_current_model.queue_free()
 		_current_model = null
 		_expression_controller = null
 		_mtoon_outline_materials.clear()
-		
+
 	# Setup GLTF document and state
 	var gltf: GLTFDocument = GLTFDocument.new()
 	var state: GLTFState = GLTFState.new()
-	
+
 	var err: Error = gltf.append_from_file(path, state)
 	if err != OK:
 		_ui.status_label.text = "Error: Failed to append GLTF from file. Error code: " + str(err)
 		return
-		
+
 	var generated_scene: Node = gltf.generate_scene(state)
 	if not generated_scene:
 		_ui.status_label.text = "Error: Failed to generate scene."
 		return
-		
+
 	_current_model = generated_scene
-	_model_anchor.add_child(_current_model)
+	# Wrap the loaded model in a ModelRoot node so the %ModelRoot unique name resolves.
+	# This is the target for the 全ての親 root-motion track.
+	var model_root: Node3D = Node3D.new()
+	model_root.name = "ModelRoot"
+	model_root.unique_name_in_owner = true
+	_model_anchor.add_child(model_root)
+	model_root.owner = self
 
-	# Apply MToon outline pass to every qualifying mesh surface.
+	model_root.add_child(_current_model)
+	_current_model.owner = self
+
 	_setup_mtoon_outlines(_current_model)
+	_expression_controller = VRMUtil.find_expression_controller(_current_model)
 
-	# Find expression controller
-	_expression_controller = _find_expression_controller(_current_model)
+	# Setup IK
+	var skeleton: Skeleton3D = VRMUtil.find_skeleton(_current_model)
+	if skeleton:
+		var ik_controller: Node = load("res://addons/vrm/vmd/vrm_ik_controller.gd").new()
+		ik_controller.name = "VrmIkController"
+		_current_model.add_child(ik_controller)
+		ik_controller.setup(skeleton)
+
 	_update_expressions_ui()
 	_ui.set_model_loaded(true)
 
@@ -101,15 +399,12 @@ func load_vrm(path: String) -> void:
 
 
 func _register_vrm_extensions() -> void:
-	var vrm0_ext_path := "res://addons/vrm/vrm0/vrm0_extension.gd"
-	var vrm1_ext_path := "res://addons/vrm/vrm1/vrm1_extension.gd"
-
+	var vrm0_ext_path: String = "res://addons/vrm/vrm0/vrm0_extension.gd"
+	var vrm1_ext_path: String = "res://addons/vrm/vrm1/vrm1_extension.gd"
 	if not FileAccess.file_exists(vrm0_ext_path) or not FileAccess.file_exists(vrm1_ext_path):
 		return
-
-	var vrm0_ext = load(vrm0_ext_path).new()
-	var vrm1_ext = load(vrm1_ext_path).new()
-
+	var vrm0_ext: GLTFDocumentExtension = load(vrm0_ext_path).new()
+	var vrm1_ext: GLTFDocumentExtension = load(vrm1_ext_path).new()
 	GLTFDocument.register_gltf_document_extension(vrm0_ext, true)
 	GLTFDocument.register_gltf_document_extension(vrm1_ext, true)
 
@@ -129,20 +424,16 @@ func _crawl_for_mtoon(node: Node) -> void:
 func _apply_outlines_to_mesh(mesh_instance: MeshInstance3D) -> void:
 	if mesh_instance.mesh == null:
 		return
-
 	for i: int in range(mesh_instance.mesh.get_surface_count()):
 		var body_mat: Material = mesh_instance.get_surface_override_material(i)
 		if body_mat == null:
 			body_mat = mesh_instance.mesh.surface_get_material(i)
-
 		if not _is_mtoon(body_mat):
 			continue
-
 		var shader_body: ShaderMaterial = body_mat as ShaderMaterial
 		if mesh_instance.get_surface_override_material(i) == null:
 			shader_body = shader_body.duplicate() as ShaderMaterial
 			mesh_instance.set_surface_override_material(i, shader_body)
-
 		var outline: ShaderMaterial = _build_outline_from(shader_body)
 		shader_body.next_pass = outline
 		_mtoon_outline_materials[shader_body] = outline
@@ -151,81 +442,62 @@ func _apply_outlines_to_mesh(mesh_instance: MeshInstance3D) -> void:
 func _is_mtoon(mat: Material) -> bool:
 	if not (mat is ShaderMaterial):
 		return false
-	var sm := mat as ShaderMaterial
+	var sm: ShaderMaterial = mat as ShaderMaterial
 	return sm.shader != null and sm.shader.resource_path == MTOON_SHADER_PATH
 
 
 func _build_outline_from(body: ShaderMaterial) -> ShaderMaterial:
-	var outline := ShaderMaterial.new()
+	var outline: ShaderMaterial = ShaderMaterial.new()
 	outline.shader = load(MTOON_OUTLINE_SHADER_PATH)
-
 	const SHARED_PARAMS: Array[StringName] = [
 		&"alpha_mode", &"alpha_cutoff", &"base_color", &"base_color_texture",
 		&"shading_shift_factor", &"shading_shift_texture", &"shading_toony_factor",
 		&"uv_animation_mask_texture", &"uv_animation_scroll_x_speed",
 		&"uv_animation_scroll_y_speed", &"uv_animation_rotation_speed",
 	]
-
 	for param: StringName in SHARED_PARAMS:
 		var value: Variant = body.get_shader_parameter(param)
 		if value != null:
 			outline.set_shader_parameter(param, value)
-
 	return outline
 
 
-func _find_expression_controller(root: Node) -> Node:
-	for child in root.get_children():
-		if child.get_class() == "Vrm0ExpressionController" or child is Vrm0ExpressionController:
-			return child
-		if child.get_class() == "Vrm1ExpressionController" or child is Vrm1ExpressionController:
-			return child
-	return null
-
-
 func _update_expressions_ui() -> void:
-	for child in _ui.expression_list.get_children():
+	for child: Node in _ui.expression_list.get_children():
 		child.queue_free()
-		
 	if not _expression_controller:
 		_ui.set_model_loaded(false)
 		return
-		
 	_ui.set_model_loaded(true)
-	
 	var expression_names: Array = []
 	if _expression_controller is Vrm0ExpressionController:
 		expression_names = _expression_controller.expressions
 	elif _expression_controller is Vrm1ExpressionController:
-		var binds = _expression_controller.get("_binds")
+		var binds: Dictionary = _expression_controller.get("_binds")
 		if binds:
 			expression_names = binds.keys()
-			
 	expression_names.sort()
-	for exp_name in expression_names:
+	for exp_name: String in expression_names:
 		_add_expression_slider(exp_name)
 
 
 func _add_expression_slider(exp_name: String) -> void:
-	var hbox := HBoxContainer.new()
-	var label := Label.new()
+	var hbox: HBoxContainer = HBoxContainer.new()
+	var label: Label = Label.new()
 	label.text = exp_name.capitalize()
 	label.custom_minimum_size.x = 100
 	label.clip_text = true
 	hbox.add_child(label)
-	
-	var slider := HSlider.new()
+	var slider: HSlider = HSlider.new()
 	slider.min_value = 0.0
 	slider.max_value = 1.0
 	slider.step = 0.01
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	
 	if _expression_controller is Vrm0ExpressionController:
 		if exp_name in _expression_controller:
 			slider.value = _expression_controller.get(exp_name)
 	elif _expression_controller is Vrm1ExpressionController:
 		slider.value = _expression_controller.get_expression(exp_name)
-		
 	slider.value_changed.connect(_on_expression_value_changed.bind(exp_name))
 	hbox.add_child(slider)
 	_ui.expression_list.add_child(hbox)
@@ -239,8 +511,8 @@ func _on_expression_value_changed(value: float, exp_name: String) -> void:
 		if exp_name in _expression_controller:
 			_expression_controller.set(exp_name, value)
 	elif _expression_controller is Vrm1ExpressionController:
-		var standard_props = ["happy", "angry", "sad", "relaxed", "surprised", "aa", "ih", "ou", "ee", "oh", "blink", "blink_left", "blink_right", "look_up", "look_down", "look_left", "look_right", "neutral"]
-		var prop_name = exp_name.to_snake_case()
+		var standard_props: Array[String] = ["happy", "angry", "sad", "relaxed", "surprised", "aa", "ih", "ou", "ee", "oh", "blink", "blink_left", "blink_right", "look_up", "look_down", "look_left", "look_right", "neutral"]
+		var prop_name: String = exp_name.to_snake_case()
 		if prop_name in standard_props:
 			_expression_controller.set(prop_name, value)
 		else:
@@ -250,33 +522,22 @@ func _on_expression_value_changed(value: float, exp_name: String) -> void:
 func _update_animations_ui() -> void:
 	if not _ui.anim_list:
 		return
-		
-	for child in _ui.anim_list.get_children():
+	for child: Node in _ui.anim_list.get_children():
 		child.queue_free()
-	
-	var stop_btn := Button.new()
-	stop_btn.text = "⏹ Stop Animation"
-	stop_btn.pressed.connect(_on_stop_animation_pressed)
-	_ui.anim_list.add_child(stop_btn)
-	_ui.anim_list.add_child(HSeparator.new())
-	
-	var anim_dir := "res://assets/vrma/"
+
+	var anim_dir: String = "res://assets/vrma/"
 	if not DirAccess.dir_exists_absolute(anim_dir):
-		var lbl := Label.new()
-		lbl.text = "No animations found in " + anim_dir
-		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_ui.anim_list.add_child(lbl)
 		return
-		
-	var dir := DirAccess.open(anim_dir)
+	var dir: DirAccess = DirAccess.open(anim_dir)
 	if dir:
 		dir.list_dir_begin()
-		var file_name := dir.get_next()
+		var file_name: String = dir.get_next()
 		while file_name != "":
 			if not dir.current_is_dir() and (file_name.ends_with(".vrma") or file_name.ends_with(".bvh")):
-				var btn := Button.new()
+				var btn: Button = Button.new()
 				btn.text = "▶ " + file_name.get_basename()
 				btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+				btn.clip_text = true
 				btn.pressed.connect(_on_animation_selected.bind(anim_dir + file_name))
 				_ui.anim_list.add_child(btn)
 			file_name = dir.get_next()
@@ -288,207 +549,193 @@ func _on_animation_selected(path: String) -> void:
 	_ui.status_label.text = "Loading Animation: " + path.get_file() + "..."
 	var library: AnimationLibrary = VrmaLoader.load_animation_library(path) if path.ends_with(".vrma") else BvhLoader.load_animation_library(path)
 	if not library:
-		_ui.status_label.text = "Error: Failed to load VRMA at " + path
 		return
-	
-	# Create a unique copy so retargeting doesn't corrupt the cached resource or compound rotations.
 	var local_library: AnimationLibrary = library.duplicate(true)
-	
-	var player := _find_animation_player(_current_model)
+	var player: AnimationPlayer = VRMUtil.find_animation_player(_current_model)
 	if not player:
 		player = AnimationPlayer.new()
 		player.name = "AnimationPlayer"
 		_current_model.add_child(player)
 		player.owner = _current_model
-	
 	if player.has_animation_library(&"VRMA"):
 		player.remove_animation_library(&"VRMA")
 	player.add_animation_library(&"VRMA", local_library)
-	
-	# Retarget bone paths in the local copy to match this specific avatar's skeleton.
 	_retarget_library_for_model(local_library, _current_model)
-	
-	var anims := local_library.get_animation_list()
+	var anims: Array[StringName] = local_library.get_animation_list()
 	if not anims.is_empty():
+		_is_animation_paused = false
 		player.play("VRMA/" + str(anims[0]))
-		_ui.status_label.text = "Playing: " + path.get_file()
+		_sync_pause_buttons(false)
 
 
-func _retarget_library_for_model(library: AnimationLibrary, model: Node) -> void:
-	var skeleton: Skeleton3D = _find_skeleton(model)
-	if skeleton == null:
-		push_warning("VrmRuntimeLoader: No Skeleton3D found for retargeting.")
-		return
-
-	# Build lookup tables
-	var role_to_bone: Dictionary = model.get_meta("vrm_humanoid_bones", {})
-	var bone_names_lower: Dictionary = {}
-	for i in range(skeleton.get_bone_count()):
-		var b: String = skeleton.get_bone_name(i)
-		bone_names_lower[b.to_lower()] = b
-
-	# Pre-compute skeleton base rotation (from parents like the GLTF root node).
-	var is_vrm0: bool = model.has_meta("vrm0_data")
-	var skeleton_rot := Quaternion.IDENTITY
-	
+func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd: bool = false) -> void:
+	var skeleton: Skeleton3D = VRMUtil.find_skeleton(model)
+	if skeleton == null: return
+	var is_vrm0: bool = VRMUtil.is_vrm0(model)
+	var skeleton_rot: Quaternion = Quaternion.IDENTITY
 	var root_node: Node = skeleton.get_parent()
 	while root_node != null and root_node is Node3D:
 		skeleton_rot = root_node.transform.basis.orthonormalized().get_rotation_quaternion() * skeleton_rot
 		root_node = root_node.get_parent()
-
-	# Pre-compute world rest rotations for all bones.
-	# This captures Godot's SkeletonProfileHumanoid reorientations (vital for VRM1)
-	# AND the physical world direction of the mesh (vital for VRM0).
-	var world_rests: Array[Quaternion] = []
+	var world_rests: Array[Transform3D] = []
 	world_rests.resize(skeleton.get_bone_count())
-	for i in range(skeleton.get_bone_count()):
+	for i: int in range(skeleton.get_bone_count()):
 		world_rests[i] = _compute_bone_world_rest(skeleton, i, skeleton_rot)
-
-	for anim_name in library.get_animation_list():
+	for anim_name: StringName in library.get_animation_list():
 		var anim: Animation = library.get_animation(anim_name)
-		var fixed := 0
-		var failed: Array[String] = []
-
-		for i in range(anim.get_track_count()):
-			var path_str: String = str(anim.track_get_path(i))
-			if not "%GeneralSkeleton:" in path_str:
-				continue
-			var parts := path_str.split(":")
-			if parts.size() < 2:
-				continue
-			var bone_name: String = parts[1]
-
-			# --- Step A: Resolve the bone name ---
-			var resolved_name := ""
-			if skeleton.find_bone(bone_name) != -1:
-				resolved_name = bone_name
-			else:
-				# Try case-insensitive humanoid role metadata lookup
-				var bone_name_lower := bone_name.to_lower()
-				if role_to_bone.has(bone_name_lower):
-					resolved_name = role_to_bone[bone_name_lower]
-				
-				if resolved_name.is_empty():
-					# Try case-insensitive match against skeleton bone names
-					if bone_names_lower.has(bone_name_lower):
-						resolved_name = bone_names_lower[bone_name_lower]
-
-			if resolved_name.is_empty():
-				failed.append(bone_name)
-				continue
-
-			if resolved_name != bone_name:
-				parts[1] = resolved_name
-				anim.track_set_path(i, NodePath(":".join(parts)))
-				fixed += 1
-
-			# --- Step B: Apply target rest pose (spec Step 2) ---
-			# Rotations: B.LocalRotation = L_dst * W_dst⁻¹ * NLR * W_dst
-			# Positions: B.LocalPosition = L_dst_pos + (W_dst_inv * NLR_pos)
-			var bone_idx := skeleton.find_bone(resolved_name)
-			if bone_idx >= 0:
-				if anim.track_get_type(i) == Animation.TYPE_ROTATION_3D:
-					var L_dst: Quaternion = skeleton.get_bone_rest(bone_idx).basis.orthonormalized().get_rotation_quaternion()
-					var W_dst: Quaternion = world_rests[bone_idx]
-					var W_dst_inv: Quaternion = W_dst.inverse()
-					if not (L_dst.is_equal_approx(Quaternion.IDENTITY) and W_dst.is_equal_approx(Quaternion.IDENTITY)):
-						for k in range(anim.track_get_key_count(i)):
-							var nlr: Quaternion = anim.track_get_key_value(i, k)
-							anim.track_set_key_value(i, k, L_dst * W_dst_inv * nlr * W_dst)
-							
-				elif anim.track_get_type(i) == Animation.TYPE_POSITION_3D:
-					var W_dst_inv: Quaternion = world_rests[bone_idx].inverse()
-					if not W_dst_inv.is_equal_approx(Quaternion.IDENTITY):
-						for k in range(anim.track_get_key_count(i)):
-							var pos: Vector3 = anim.track_get_key_value(i, k)
-							anim.track_set_key_value(i, k, W_dst_inv * pos)
-
-		# --- Step C: Expression Controller Retargeting (VRM 0.0 vs 1.0) ---
-		for i in range(anim.get_track_count()):
+		for i: int in range(anim.get_track_count()):
 			var path_str: String = str(anim.track_get_path(i))
 			if "Vrm1ExpressionController:" in path_str and is_vrm0:
-				var prop_name := path_str.split(":")[1]
+				var prop_name: String = path_str.split(":")[1]
 				var target_prop: String = VRM1_TO_VRM0_EXPRESSIONS.get(prop_name, prop_name)
-				var new_path := "%Vrm0ExpressionController:" + target_prop
-				anim.track_set_path(i, NodePath(new_path))
+				anim.track_set_path(i, NodePath("%Vrm0ExpressionController:" + target_prop))
 
-		print("VrmRuntimeLoader: '", anim_name, "' fixed=", fixed, " unresolved=", failed)
+			var is_ik: bool = "leftLegIk" in path_str or "rightLegIk" in path_str
+			if not "%GeneralSkeleton:" in path_str and not is_ik: continue
+
+			var bone_name: String = ""
+			if is_ik:
+				bone_name = "leftFoot" if "leftLegIk" in path_str else "rightFoot"
+			else:
+				bone_name = path_str.split(":")[1]
+
+			var resolved_name: String = VRMUtil.find_bone(skeleton, model, bone_name)
+			if resolved_name.is_empty(): continue
+
+			if not is_ik and resolved_name != bone_name:
+				var parts: PackedStringArray = path_str.split(":")
+				if parts.size() > 1:
+					parts[1] = resolved_name
+					anim.track_set_path(i, NodePath(":".join(parts)))
+			var bone_idx: int = skeleton.find_bone(resolved_name)
+			if bone_idx >= 0:
+				var W_dst_node: Transform3D = world_rests[bone_idx]
+				var W_dst_q: Quaternion = W_dst_node.basis.get_rotation_quaternion()
+				var W_dst_q_inv: Quaternion = W_dst_q.inverse()
+
+				if anim.track_get_type(i) == Animation.TYPE_ROTATION_3D:
+					var L_dst: Quaternion = Quaternion.IDENTITY
+					if not is_ik:
+						L_dst = skeleton.get_bone_rest(bone_idx).basis.orthonormalized().get_rotation_quaternion()
+
+					for k: int in range(anim.track_get_key_count(i)):
+						var nlr: Quaternion = anim.track_get_key_value(i, k)
+						if is_vmd:
+							# VMD rotations are local deltas, but authored in a world-aligned space.
+							# To apply them to a Godot bone, we must conjugate them into the parent's local space.
+							# W_parent_inv * nlr * W_dst == L_dst * W_dst_inv * nlr * W_dst
+							anim.track_set_key_value(i, k, L_dst * W_dst_q_inv * nlr * W_dst_q)
+						else:
+							# VRMA rotations are absolute world-space orientations.
+							# Formula: rest_local * world_rest_inv * anim_rot * world_rest
+							anim.track_set_key_value(i, k, L_dst * W_dst_q_inv * nlr * W_dst_q)
+
+				elif anim.track_get_type(i) == Animation.TYPE_POSITION_3D:
+					var local_rest: Vector3 = Vector3.ZERO
+					if is_ik and is_vmd:
+						# IK targets are Marker3D nodes in model-root space.
+						# The animation pos is a delta from the foot's MMD rest position.
+						local_rest = world_rests[bone_idx].origin
+						for k: int in range(anim.track_get_key_count(i)):
+							var pos: Vector3 = anim.track_get_key_value(i, k)
+							anim.track_set_key_value(i, k, local_rest + pos)
+					else:
+						var W_dst_inv_basis: Basis = W_dst_node.basis.inverse()
+						if not is_ik:
+							local_rest = skeleton.get_bone_rest(bone_idx).origin
+						else:
+							local_rest = skeleton.get_bone_global_pose(bone_idx).origin
+						for k: int in range(anim.track_get_key_count(i)):
+							var pos: Vector3 = anim.track_get_key_value(i, k)
+							anim.track_set_key_value(i, k, local_rest + (W_dst_inv_basis * pos))
 
 
-func _compute_bone_world_rest(skeleton: Skeleton3D, bone_idx: int, skeleton_rot: Quaternion) -> Quaternion:
-	var rot: Quaternion = skeleton.get_bone_rest(bone_idx).basis.orthonormalized().get_rotation_quaternion()
+func _compute_bone_world_rest(skeleton: Skeleton3D, bone_idx: int, skeleton_rot: Quaternion) -> Transform3D:
+	var rest: Transform3D = skeleton.get_bone_rest(bone_idx)
 	var parent: int = skeleton.get_bone_parent(bone_idx)
 	while parent >= 0:
-		rot = skeleton.get_bone_rest(parent).basis.orthonormalized().get_rotation_quaternion() * rot
+		rest = skeleton.get_bone_rest(parent) * rest
 		parent = skeleton.get_bone_parent(parent)
-	return skeleton_rot * rot
-
-
-func _find_skeleton(node: Node) -> Skeleton3D:
-	if node is Skeleton3D:
-		return node
-	for child in node.get_children(true):
-		var res := _find_skeleton(child)
-		if res:
-			return res
-	return null
+	return Transform3D(Basis(skeleton_rot), Vector3.ZERO) * rest
 
 
 func _on_stop_animation_pressed() -> void:
-	if not _current_model:
-		return
-	var player := _find_animation_player(_current_model)
+	if not _current_model: return
+	var player: AnimationPlayer = VRMUtil.find_animation_player(_current_model)
 	if player:
 		player.stop()
-		_ui.status_label.text = "Animation stopped."
+		_is_animation_paused = false
+		_sync_pause_buttons(false)
+	if _audio_player.is_playing():
+		_audio_player.stop()
+	_ui.frame_label.text = "Frame: 0"
+	# Reset root motion state and position
+	_vmd_root_motion_active = false
+	_vmd_player = null
+	_model_anchor.transform = Transform3D.IDENTITY
 
 
-func _find_animation_player(node: Node) -> AnimationPlayer:
-	if node is AnimationPlayer:
-		return node as AnimationPlayer
-	for child in node.get_children():
-		var res := _find_animation_player(child)
-		if res:
-			return res
-	return null
+func _on_pause_animation_pressed() -> void:
+	if not _current_model: return
+	var player: AnimationPlayer = VRMUtil.find_animation_player(_current_model)
+	if not player: return
+
+	if player.is_playing():
+		if _is_animation_paused:
+			# Resume
+			player.play()
+			if _audio_player.stream and _audio_player.stream_paused:
+				_audio_player.stream_paused = false
+			elif _audio_player.stream and not _audio_player.is_playing():
+				_audio_player.play()
+			_is_animation_paused = false
+			_sync_pause_buttons(false)
+		else:
+			# Pause
+			player.pause()
+			if _audio_player.is_playing():
+				_audio_player.stream_paused = true
+			_is_animation_paused = true
+			_sync_pause_buttons(true)
+	else:
+		# If stopped but we have an animation, try playing it
+		if player.assigned_animation != "":
+			player.play()
+			_is_animation_paused = false
+			_sync_pause_buttons(false)
+
+
+func _sync_pause_buttons(is_paused: bool) -> void:
+	var text: String = "▶ Resume Animation" if is_paused else "⏸ Pause Animation"
+	_ui.pause_button.text = text
 
 
 func _add_to_recents(path: String) -> void:
-	if _recents.has(path):
-		_recents.erase(path)
+	if _recents.has(path): _recents.erase(path)
 	_recents.push_front(path)
-	if _recents.size() > MAX_RECENTS:
-		_recents.pop_back()
+	if _recents.size() > MAX_RECENTS: _recents.pop_back()
 	_save_recents()
 	_update_recents_ui()
 
 
 func _save_recents() -> void:
-	var config := ConfigFile.new()
+	var config: ConfigFile = ConfigFile.new()
 	config.set_value("general", "recents", _recents)
 	config.save(CONFIG_PATH)
 
 
 func _load_recents() -> void:
-	var config := ConfigFile.new()
+	var config: ConfigFile = ConfigFile.new()
 	if config.load(CONFIG_PATH) == OK:
 		_recents = config.get_value("general", "recents", [])
 
 
 func _update_recents_ui() -> void:
-	for child in _ui.recents_list.get_children():
-		child.queue_free()
-	for path in _recents:
-		var btn := Button.new()
+	for child: Node in _ui.recents_list.get_children(): child.queue_free()
+	for path: String in _recents:
+		var btn: Button = Button.new()
 		btn.text = path.get_file()
 		btn.alignment = HorizontalAlignment.HORIZONTAL_ALIGNMENT_LEFT
+		btn.clip_text = true
 		btn.pressed.connect(load_vrm.bind(path))
 		_ui.recents_list.add_child(btn)
-
-
-func _on_open_vrm_pressed() -> void:
-	_ui.file_dialog.popup_centered_ratio(0.8)
-
-
-func _on_file_dialog_file_selected(path: String) -> void:
-	load_vrm(path)

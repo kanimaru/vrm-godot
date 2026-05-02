@@ -1,0 +1,5 @@
+pre_rot_l: (0.664463, 0.241845, 0.241845, 0.664463)
+Left Arm rotated (NO TWIST): (-0.766044, -0.642788, 0.0)
+Left Palm rotated (NO TWIST): (0.642788, -0.766044, 0.0)
+Left Arm rotated (WITH TWIST): (-0.766044, -0.642788, 0.0)
+Left Palm rotated (WITH TWIST): (0.0, -0.0, -1.0)

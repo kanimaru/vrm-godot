@@ -1,0 +1,126 @@
+[gd_scene format=3 uid="uid://bqj8k8y8q8u8"]
+
+[ext_resource type="Script" uid="uid://mss510sg1wp7" path="res://runtime/vrm_runtime_vmd_tab.gd" id="1_script"]
+
+[node name="VmdStudio" type="ScrollContainer" unique_id=2139372693]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+script = ExtResource("1_script")
+
+[node name="HSplitContainer" type="VSplitContainer" parent="." unique_id=177123422]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="UpperPanel" type="VBoxContainer" parent="HSplitContainer" unique_id=2043264317]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/UpperPanel" unique_id=1315422679]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "💃 Dance Gallery"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="HSplitContainer/UpperPanel" unique_id=911804537]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="DanceList" type="VBoxContainer" parent="HSplitContainer/UpperPanel/ScrollContainer" unique_id=1986494281]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LowerPanel" type="VBoxContainer" parent="HSplitContainer" unique_id=1341271409]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="MotionSlot" type="VBoxContainer" parent="HSplitContainer/LowerPanel" unique_id=1696490014]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LowerPanel/MotionSlot" unique_id=575052852]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Model Motion (.vmd)"
+
+[node name="MotionBtn" type="Button" parent="HSplitContainer/LowerPanel/MotionSlot" unique_id=1793455810]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Select file..."
+alignment = 0
+clip_text = true
+
+[node name="CameraSlot" type="VBoxContainer" parent="HSplitContainer/LowerPanel" unique_id=160230446]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LowerPanel/CameraSlot" unique_id=437231450]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Camera Motion (.vmd)"
+
+[node name="CameraBtn" type="Button" parent="HSplitContainer/LowerPanel/CameraSlot" unique_id=1122581698]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Select file..."
+alignment = 0
+clip_text = true
+
+[node name="AudioSlot" type="VBoxContainer" parent="HSplitContainer/LowerPanel" unique_id=988870157]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LowerPanel/AudioSlot" unique_id=1677765118]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Audio (.wav/.mp3)"
+
+[node name="AudioBtn" type="Button" parent="HSplitContainer/LowerPanel/AudioSlot" unique_id=632444768]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Select file..."
+alignment = 0
+clip_text = true
+
+[node name="SettingsHBox" type="VBoxContainer" parent="HSplitContainer/LowerPanel" unique_id=163684246]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="OffsetVBox" type="VBoxContainer" parent="HSplitContainer/LowerPanel/SettingsHBox" unique_id=1563812367]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/LowerPanel/SettingsHBox/OffsetVBox" unique_id=1535512016]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Camera Y Offset"
+
+[node name="OffsetSpin" type="SpinBox" parent="HSplitContainer/LowerPanel/SettingsHBox/OffsetVBox" unique_id=1937286656]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = -100.0
+step = 0.1
+allow_greater = true
+allow_lesser = true
+
+[node name="APoseCheck" type="CheckBox" parent="HSplitContainer/LowerPanel/SettingsHBox" unique_id=1727379733]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+button_pressed = true
+text = "A-Pose VMD Mode"
+
+[node name="DebugCheck" type="CheckBox" parent="HSplitContainer/LowerPanel/SettingsHBox" unique_id=1827379734]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+text = "Debug IK Targets"
+
+[node name="PlayBtn" type="Button" parent="HSplitContainer/LowerPanel" unique_id=524394314]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+text = "🚀 Play Selected Dance"

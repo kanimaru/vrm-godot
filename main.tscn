@@ -5,33 +5,34 @@
 [ext_resource type="PackedScene" uid="uid://cw6itd8l7uiyt" path="res://assets/tester/tester-vrm0.0.vrm" id="2_lquwl"]
 [ext_resource type="PackedScene" uid="uid://c0eo5uq82ex4s" path="res://assets/tester/tester-vrm1.0.vrm" id="3_7mycd"]
 [ext_resource type="AnimationLibrary" uid="uid://dfsx1hlnrdxw4" path="res://assets/VRMA/VRMA_01.vrma" id="3_272bh"]
+[ext_resource type="AnimationLibrary" uid="uid://bokm5hrrio2jh" path="res://assets/vmd/Caramell Dansen/motion.vmd" id="4_4c57u"]
 [ext_resource type="AnimationLibrary" uid="uid://4pxlqkcs7c4n" path="res://assets/VRMA/admiration.bvh" id="4_5vw27"]
 [ext_resource type="PackedScene" uid="uid://dwp7ll1f6xf2h" path="res://assets/temptic/model.vrm" id="4_272bh"]
 
 [node name="Node3D" type="Node3D" unique_id=729613782]
 script = ExtResource("1_lquwl")
 
-[node name="luna" parent="." unique_id=472955867 instance=ExtResource("1_1bvp3")]
+[node name="luna" parent="." unique_id=1918207616 instance=ExtResource("1_1bvp3")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.4560711, 0, 0)
 
-[node name="GeneralSkeleton" parent="luna" index="0" unique_id=1371329640]
-bones/1/position = Vector3(0.0004905464, 0.10411686, 0.0141776465)
-bones/1/rotation = Quaternion(-0.008429793, 0.012781455, -0.047003966, 0.99877745)
-bones/2/rotation = Quaternion(0.011047489, -0.0104046445, 0.026322145, 0.9995383)
-bones/3/rotation = Quaternion(0.012759326, 0.009791694, 0.10272489, 0.9945798)
-bones/4/rotation = Quaternion(0.009170458, -0.0027301149, -0.018872937, 0.9997761)
-bones/5/rotation = Quaternion(0.013458727, 0.0048017255, -0.07097431, 0.99737585)
+[node name="GeneralSkeleton" parent="luna" index="0" unique_id=1256338020]
+bones/1/position = Vector3(0, 0, 0)
+bones/1/rotation = Quaternion(0, 0, -0.014021327, 0.9999018)
+bones/2/rotation = Quaternion(-7.450581e-09, 0, -0.0075768293, 0.99997133)
+bones/3/rotation = Quaternion(0, 0, 0, 1)
+bones/4/rotation = Quaternion(7.450581e-09, 1.1641532e-10, 0.010298381, 0.999947)
+bones/5/rotation = Quaternion(0.0056680334, -0.00048462235, 0.0054948484, 0.9999688)
 
-[node name="head" parent="luna/GeneralSkeleton" index="0" unique_id=1492371500]
-transform = Transform3D(0.99929464, 0.017030282, 0.033471603, -0.014498778, 0.9971175, -0.074470684, -0.03464339, 0.07393286, 0.9966611, -0.037748493, 0.85715735, 0.026383525)
+[node name="head" parent="luna/GeneralSkeleton" index="0" unique_id=723869934]
+transform = Transform3D(0.99993193, 0.011603464, -0.0011629808, -0.011615901, 0.9998683, -0.011317643, 0.0010315039, 0.011330383, 0.9999351, 0.029088402, 0.758546, -3.9445712e-08)
 
-[node name="chest" parent="luna/GeneralSkeleton" index="1" unique_id=224668604]
-transform = Transform3D(0.98627275, -0.16319396, 0.025177382, 0.16390273, 0.9860425, -0.029258521, -0.020051153, 0.032983534, 0.99925464, 0.023963701, 0.46963593, 0.012321981)
+[node name="chest" parent="luna/GeneralSkeleton" index="1" unique_id=550339123]
+transform = Transform3D(0.9990671, 0.043183938, 5.3067406e-10, -0.04318394, 0.9990671, 1.4891706e-08, 1.1290354e-10, -1.4900732e-08, 0.9999999, 0.013423857, 0.366167, -3.0987866e-09)
 
-[node name="spine" parent="luna/GeneralSkeleton" index="2" unique_id=1410561486]
-transform = Transform3D(0.99913055, 0.041492667, 0.004069686, -0.04147219, 0.99912703, -0.004996393, -0.00427345, 0.004823275, 0.99997914, 0.0153348, 0.26185542, 0.011318922)
+[node name="spine" parent="luna/GeneralSkeleton" index="2" unique_id=1718747900]
+transform = Transform3D(0.9990671, 0.043183934, 5.3067406e-10, -0.04318394, 0.999067, 1.4891706e-08, 1.1290354e-10, -1.490073e-08, 0.9999999, 0.0044432376, 0.15839897, 0)
 
-[node name="Vrm1SpringBoneSimulator" parent="luna/GeneralSkeleton" index="63" unique_id=840750017]
+[node name="Vrm1SpringBoneSimulator" parent="luna/GeneralSkeleton" index="63" unique_id=854785040]
 setting_count = 73
 settings/0/root_bone_name = "ear.R.002"
 settings/0/root_bone = 15
@@ -153,7 +154,7 @@ settings/2/joints/3/gravity = 0.0
 settings/2/joints/3/gravity_direction = Vector3(0, -1, 0)
 settings/2/joints/4/rotation_axis = 3
 settings/2/joints/4/radius = 0.01
-settings/2/joints/4/stiffness = 1.0
+settings/2/joints/4/stiffness = 1.2
 settings/2/joints/4/drag = 0.9
 settings/2/joints/4/gravity = 0.0
 settings/2/joints/4/gravity_direction = Vector3(0, -1, 0)
@@ -201,7 +202,7 @@ settings/3/joints/3/gravity = 0.0
 settings/3/joints/3/gravity_direction = Vector3(0, -1, 0)
 settings/3/joints/4/rotation_axis = 3
 settings/3/joints/4/radius = 0.01
-settings/3/joints/4/stiffness = 1.0
+settings/3/joints/4/stiffness = 1.2
 settings/3/joints/4/drag = 0.9
 settings/3/joints/4/gravity = 0.0
 settings/3/joints/4/gravity_direction = Vector3(0, -1, 0)
@@ -1641,7 +1642,7 @@ settings/43/joints/3/gravity = 0.0
 settings/43/joints/3/gravity_direction = Vector3(0, -1, 0)
 settings/43/joints/4/rotation_axis = 3
 settings/43/joints/4/radius = 0.01
-settings/43/joints/4/stiffness = 1.0
+settings/43/joints/4/stiffness = 1.2
 settings/43/joints/4/drag = 0.9
 settings/43/joints/4/gravity = 0.0
 settings/43/joints/4/gravity_direction = Vector3(0, -1, 0)
@@ -1905,7 +1906,7 @@ settings/50/joints/3/gravity = 0.0
 settings/50/joints/3/gravity_direction = Vector3(0, -1, 0)
 settings/50/joints/4/rotation_axis = 3
 settings/50/joints/4/radius = 0.01
-settings/50/joints/4/stiffness = 1.0
+settings/50/joints/4/stiffness = 1.2
 settings/50/joints/4/drag = 0.9
 settings/50/joints/4/gravity = 0.0
 settings/50/joints/4/gravity_direction = Vector3(0, -1, 0)
@@ -1953,7 +1954,7 @@ settings/51/joints/3/gravity = 0.0
 settings/51/joints/3/gravity_direction = Vector3(0, -1, 0)
 settings/51/joints/4/rotation_axis = 3
 settings/51/joints/4/radius = 0.01
-settings/51/joints/4/stiffness = 1.0
+settings/51/joints/4/stiffness = 1.2
 settings/51/joints/4/drag = 0.9
 settings/51/joints/4/gravity = 0.0
 settings/51/joints/4/gravity_direction = Vector3(0, -1, 0)
@@ -2049,7 +2050,7 @@ settings/54/joints/3/gravity = 0.0
 settings/54/joints/3/gravity_direction = Vector3(0, -1, 0)
 settings/54/joints/4/rotation_axis = 3
 settings/54/joints/4/radius = 0.01
-settings/54/joints/4/stiffness = 1.0
+settings/54/joints/4/stiffness = 1.2
 settings/54/joints/4/drag = 0.9
 settings/54/joints/4/gravity = 0.0
 settings/54/joints/4/gravity_direction = Vector3(0, -1, 0)
@@ -2506,7 +2507,7 @@ settings/67/joints/1/gravity_direction = Vector3(0, -1, 0)
 settings/67/joints/2/rotation_axis = 3
 settings/67/joints/2/radius = 0.01
 settings/67/joints/2/stiffness = 0.25
-settings/67/joints/2/drag = 0.5
+settings/67/joints/2/drag = 0.75
 settings/67/joints/2/gravity = 0.0
 settings/67/joints/2/gravity_direction = Vector3(0, -1, 0)
 settings/67/joints/3/rotation_axis = 3
@@ -2692,14 +2693,15 @@ settings/72/joints/4/gravity_direction = Vector3(0, -1, 0)
 settings/72/enable_all_child_collisions = true
 settings/72/exclude_collision_count = 0
 
-[node name="VrmAnimationRetargeter" parent="luna" index="1" unique_id=1788546528 node_paths=PackedStringArray("animation_player", "skeleton")]
+[node name="VrmAnimationRetargeter" parent="luna" index="1" unique_id=781783976 node_paths=PackedStringArray("animation_player", "skeleton")]
 animation_player = NodePath("../AnimationPlayer")
 skeleton = NodePath("../GeneralSkeleton")
 
-[node name="Vrm1ExpressionController" parent="luna" index="2" unique_id=278758315]
-happy = 0.291
+[node name="Vrm1ExpressionController" parent="luna" index="2" unique_id=1922310861]
+happy = 0.01
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="luna" unique_id=1320566032]
+"libraries/Caramell Dansen" = ExtResource("4_4c57u")
 libraries/VRMA_01 = ExtResource("3_272bh")
 libraries/admiration = ExtResource("4_5vw27")
 
