@@ -48,6 +48,7 @@ var _vmd_player: AnimationPlayer = null
 var _debug_skeleton: Node3D = null
 ## Whether the currently loaded model is VRM 0.0.
 var _is_vrm0: bool = false
+var _initial_anchor_transform: Transform3D = Transform3D.IDENTITY
 
 @onready var _vmd_camera: Camera3D = Camera3D.new()
 @onready var _audio_player: AudioStreamPlayer = AudioStreamPlayer.new()
@@ -56,6 +57,9 @@ var _is_vrm0: bool = false
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
+
+	# Store the initial position of the model anchor (e.g. for grounding offsets)
+	_initial_anchor_transform = _model_anchor.transform
 
 	# Setup Nodes
 	_vmd_camera.name = "VmdCamera"
@@ -302,8 +306,6 @@ func _on_play_dance_pressed() -> void:
 	_retarget_library_for_model(final_lib, _current_model, true)
 
 	# Enable root motion: the %ModelRoot track (from 全ての親) drives world locomotion.
-	# Reset anchor first so locomotion starts from the current position.
-	_model_anchor.transform = Transform3D.IDENTITY
 	var has_root_motion: bool = false
 	for i: int in range(main_anim.get_track_count()):
 		if "%ModelRoot" in str(main_anim.track_get_path(i)):

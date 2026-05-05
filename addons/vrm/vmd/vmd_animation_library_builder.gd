@@ -204,15 +204,26 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 
 			merged_bone_data[vrm_name][frame_idx] = {"pos": total_pos, "rot": total_rot}
 
-	# 2. Calculate initial Hips XZ for centering.
-	var initial_hips_xz: Vector3 = Vector3.ZERO
+	# 2. Calculate initial offsets for centering and grounding.
+	# Horizontal Centering: Use Hips X,Z from first frame.
+	# Vertical Grounding: Use ModelRoot (All Parent) Y from first frame.
+	var initial_root_offset: Vector3 = Vector3.ZERO
 	if merged_bone_data.has("hips"):
-		var frames: Dictionary = merged_bone_data["hips"]
-		var keys: Array[int] = []
-		for k in frames.keys(): keys.append(k as int)
-		keys.sort()
-		if not keys.is_empty():
-			initial_hips_xz = Vector3(frames[keys[0]].pos.x, 0.0, frames[keys[0]].pos.z)
+		var h_frames: Dictionary = merged_bone_data["hips"]
+		var h_keys: Array[int] = []
+		for k in h_frames.keys(): h_keys.append(k as int)
+		h_keys.sort()
+		if not h_keys.is_empty():
+			initial_root_offset.x = h_frames[h_keys[0]].pos.x
+			initial_root_offset.z = h_frames[h_keys[0]].pos.z
+
+	if merged_bone_data.has(MODEL_ROOT_VRM_NAME):
+		var r_frames: Dictionary = merged_bone_data[MODEL_ROOT_VRM_NAME]
+		var r_keys: Array[int] = []
+		for k in r_frames.keys(): r_keys.append(k as int)
+		r_keys.sort()
+		if not r_keys.is_empty():
+			initial_root_offset.y = r_frames[r_keys[0]].pos.y
 
 	# 3. Build Bone Tracks from merged data
 	for vrm_name: String in merged_bone_data:
@@ -275,8 +286,8 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 
 				var final_p: Vector3
 				if vrm_name == MODEL_ROOT_VRM_NAME:
-					# Locomotion track: center character horizontally at start
-					final_p = data_at_frame.pos - initial_hips_xz
+					# Locomotion track: center character at start
+					final_p = data_at_frame.pos - initial_root_offset
 				else:
 					# Other tracks: VMD positions are deltas from rest.
 					# We keep them raw so they can be added to the Godot rest pose.
@@ -309,7 +320,7 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 
 							var final_p: Vector3
 							if vrm_name == MODEL_ROOT_VRM_NAME:
-								final_p = sampled_p - initial_hips_xz
+								final_p = sampled_p - initial_root_offset
 							else:
 								# Pure delta interpolation
 								final_p = sampled_p
