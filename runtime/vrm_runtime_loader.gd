@@ -579,7 +579,7 @@ func _on_animation_selected(path: String) -> void:
 func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd: bool = false) -> void:
 	var skeleton: Skeleton3D = VRMUtil.find_skeleton(model)
 	if skeleton == null: return
-	var is_vrm0_local: bool = VRMUtil.is_vrm0(model)
+	var is_vrm0: bool = VRMUtil.is_vrm0(model)
 	var skeleton_rot: Quaternion = Quaternion.IDENTITY
 	var root_node: Node = skeleton.get_parent()
 	while root_node != null and root_node is Node3D:
@@ -593,7 +593,7 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd:
 		var anim: Animation = library.get_animation(anim_name)
 		for i: int in range(anim.get_track_count()):
 			var path_str: String = str(anim.track_get_path(i))
-			if "Vrm1ExpressionController:" in path_str and is_vrm0_local:
+			if "Vrm1ExpressionController:" in path_str and is_vrm0:
 				var prop_name: String = path_str.split(":")[1]
 				var target_prop: String = VRM1_TO_VRM0_EXPRESSIONS.get(prop_name, prop_name)
 				anim.track_set_path(i, NodePath("%Vrm0ExpressionController:"+ target_prop))
@@ -638,7 +638,11 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd:
 							if is_root or is_ik:
 								# For Root and IK targets, raw VMD data is already Godot-forward.
 								# Since they are children of %ModelRoot, they inherit the character's facing.
-								anim.track_set_key_value(i, k, nlr)
+								if is_vrm0 and is_ik:
+									# Apply 180-degree correction for VRM 0.0 foot targets
+									anim.track_set_key_value(i, k, nlr * Quaternion(Vector3.UP, PI))
+								else:
+									anim.track_set_key_value(i, k, nlr)
 							else:
 								# For bones, use the standard world-rest conjugation
 								anim.track_set_key_value(i, k, L_dst * W_dst_q_inv * nlr * W_dst_q)
