@@ -656,8 +656,10 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd:
 					var local_rest: Vector3 = Vector3.ZERO
 					if is_vmd:
 						# VMD positions are deltas for bones, but absolute-local for Root/IK.
-						if is_root or is_ik:
+						if is_root:
 							local_rest = Vector3.ZERO
+						elif is_ik:
+							local_rest = world_rests[bone_idx].origin
 						else:
 							local_rest = skeleton.get_bone_rest(bone_idx).origin
 					else:
