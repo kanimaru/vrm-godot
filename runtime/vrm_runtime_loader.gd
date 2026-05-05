@@ -10,8 +10,9 @@ const MAX_RECENTS: int = 10
 const MTOON_SHADER_PATH: String = "res://addons/vrm/shaders/mtoon.gdshader"
 const MTOON_OUTLINE_SHADER_PATH: String = "res://addons/vrm/shaders/mtoon_outline.gdshader"
 const VRMUtil = preload("res://addons/vrm/common/vrm_util.gd")
+const MODEL_ROOT_VRM_NAME: String = "ModelRoot"
 
-const VRM1_TO_VRM0_EXPRESSIONS: Dictionary = {
+const VRM1_TO_VRM0_EXPRESSIONS: Dictionary[String, String] = {
 	"happy": "joy",
 	"sad": "sorrow",
 	"relaxed": "fun",
@@ -19,7 +20,7 @@ const VRM1_TO_VRM0_EXPRESSIONS: Dictionary = {
 	"ih": "i",
 	"ou": "u",
 	"ee": "e",
-	"oh": "o"
+	"oh": "o",
 }
 
 var _recents: Array[String] = []
@@ -45,6 +46,8 @@ var _vmd_root_motion_active: bool = false
 var _vmd_player: AnimationPlayer = null
 ## Active debug skeleton visualizer (raw VMD motion, no retargeting).
 var _debug_skeleton: Node3D = null
+## Whether the currently loaded model is VRM 0.0.
+var _is_vrm0: bool = false
 
 @onready var _vmd_camera: Camera3D = Camera3D.new()
 @onready var _audio_player: AudioStreamPlayer = AudioStreamPlayer.new()
@@ -110,22 +113,22 @@ func _process(_delta: float) -> void:
 	var player: AnimationPlayer = VRMUtil.find_animation_player(_current_model)
 	if not player: return
 
-	var current_time: float = player.current_animation_position
-	if player.is_playing() or _is_animation_paused:
+	if (player.is_playing() or _is_animation_paused) and player.current_animation != "":
+		var current_time: float = player.current_animation_position
 		var frame: int = int(current_time * 30.0)
 		_ui.frame_label.text = "Frame: %d" % frame
 
-	# Sync debug skeleton
-	if _debug_skeleton and _debug_skeleton.has_node("DebugPlayer"):
-		var debug_player: AnimationPlayer = _debug_skeleton.get_node("DebugPlayer")
-		if debug_player.current_animation == "vmd_debug":
-			if player.is_playing() and not debug_player.is_playing():
-				debug_player.play()
-			elif not player.is_playing() and debug_player.is_playing():
-				debug_player.pause()
+		# Sync debug skeleton
+		if _debug_skeleton and _debug_skeleton.has_node("DebugPlayer"):
+			var debug_player: AnimationPlayer = _debug_skeleton.get_node("DebugPlayer")
+			if debug_player.current_animation == "vmd_debug":
+				if player.is_playing() and not debug_player.is_playing():
+					debug_player.play()
+				elif not player.is_playing() and debug_player.is_playing():
+					debug_player.pause()
 
-			if abs(debug_player.current_animation_position - current_time) > 0.05:
-				debug_player.seek(current_time, true)
+				if abs(debug_player.current_animation_position - current_time) > 0.05:
+					debug_player.seek(current_time, true)
 
 
 func _on_vmd_slot_pressed(mode: String) -> void:
@@ -287,7 +290,7 @@ func _on_play_dance_pressed() -> void:
 		player = AnimationPlayer.new()
 		player.name = "AnimationPlayer"
 		_current_model.add_child(player)
-		player.owner = _current_model
+	player.owner = self
 
 	var final_lib: AnimationLibrary = AnimationLibrary.new()
 	final_lib.add_animation("dance", main_anim)
@@ -355,8 +358,8 @@ func load_vrm(path: String) -> void:
 		_mtoon_outline_materials.clear()
 
 	# Setup GLTF document and state
-	var gltf: GLTFDocument = GLTFDocument.new()
-	var state: GLTFState = GLTFState.new()
+	var gltf := GLTFDocument.new()
+	var state := GLTFState.new()
 
 	var err: Error = gltf.append_from_file(path, state)
 	if err != OK:
@@ -382,6 +385,7 @@ func load_vrm(path: String) -> void:
 
 	_setup_mtoon_outlines(_current_model)
 	_expression_controller = VRMUtil.find_expression_controller(_current_model)
+	_is_vrm0 = VRMUtil.is_vrm0(_current_model)
 
 	# Setup IK
 	var skeleton: Skeleton3D = VRMUtil.find_skeleton(_current_model)
@@ -389,7 +393,11 @@ func load_vrm(path: String) -> void:
 		var ik_controller: Node = load("res://addons/vrm/vmd/vrm_ik_controller.gd").new()
 		ik_controller.name = "VrmIkController"
 		_current_model.add_child(ik_controller)
-		ik_controller.setup(skeleton)
+		var m_root: Node = get_node("%ModelRoot")
+		ik_controller.setup(skeleton, m_root, _is_vrm0)
+		# Explicitly set owner to self for unique name resolution in AnimationPlayer
+		ik_controller.left_target.owner = self
+		ik_controller.right_target.owner = self
 
 	_update_expressions_ui()
 	_ui.set_model_loaded(true)
@@ -571,7 +579,7 @@ func _on_animation_selected(path: String) -> void:
 func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd: bool = false) -> void:
 	var skeleton: Skeleton3D = VRMUtil.find_skeleton(model)
 	if skeleton == null: return
-	var is_vrm0: bool = VRMUtil.is_vrm0(model)
+	var is_vrm0_local: bool = VRMUtil.is_vrm0(model)
 	var skeleton_rot: Quaternion = Quaternion.IDENTITY
 	var root_node: Node = skeleton.get_parent()
 	while root_node != null and root_node is Node3D:
@@ -585,33 +593,39 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd:
 		var anim: Animation = library.get_animation(anim_name)
 		for i: int in range(anim.get_track_count()):
 			var path_str: String = str(anim.track_get_path(i))
-			if "Vrm1ExpressionController:" in path_str and is_vrm0:
+			if "Vrm1ExpressionController:" in path_str and is_vrm0_local:
 				var prop_name: String = path_str.split(":")[1]
 				var target_prop: String = VRM1_TO_VRM0_EXPRESSIONS.get(prop_name, prop_name)
-				anim.track_set_path(i, NodePath("%Vrm0ExpressionController:" + target_prop))
+				anim.track_set_path(i, NodePath("%Vrm0ExpressionController:"+ target_prop))
 
 			var is_ik: bool = "leftLegIk" in path_str or "rightLegIk" in path_str
-			if not "%GeneralSkeleton:" in path_str and not is_ik: continue
+			var is_root: bool = "%ModelRoot" in path_str
+			if not "%GeneralSkeleton:" in path_str and not is_ik and not is_root: continue
 
 			var bone_name: String = ""
-			if is_ik:
+			if is_root:
+				bone_name = "hips" # Use hips as proxy for root orientation
+			elif is_ik:
 				bone_name = "leftFoot" if "leftLegIk" in path_str else "rightFoot"
 			else:
 				bone_name = path_str.split(":")[1]
 
 			var resolved_name: String = VRMUtil.find_bone(skeleton, model, bone_name)
-			if resolved_name.is_empty(): continue
+			if resolved_name.is_empty() and not is_root: continue
 
-			if not is_ik and resolved_name != bone_name:
+			if not is_ik and not is_root and resolved_name != bone_name:
 				var parts: PackedStringArray = path_str.split(":")
 				if parts.size() > 1:
 					parts[1] = resolved_name
 					anim.track_set_path(i, NodePath(":".join(parts)))
+
 			var bone_idx: int = skeleton.find_bone(resolved_name)
-			if bone_idx >= 0:
-				var W_dst_node: Transform3D = world_rests[bone_idx]
+			if bone_idx >= 0 or is_root:
+				# Use skeleton world rotation for root/IK, or bone-specific rest for pose
+				var W_dst_node: Transform3D = world_rests[bone_idx] if bone_idx >= 0 else Transform3D(Basis(skeleton_rot), Vector3.ZERO)
 				var W_dst_q: Quaternion = W_dst_node.basis.get_rotation_quaternion()
 				var W_dst_q_inv: Quaternion = W_dst_q.inverse()
+				var W_dst_inv_basis: Basis = W_dst_node.basis.inverse()
 
 				if anim.track_get_type(i) == Animation.TYPE_ROTATION_3D:
 					var L_dst: Quaternion = Quaternion.IDENTITY
@@ -621,33 +635,43 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd:
 					for k: int in range(anim.track_get_key_count(i)):
 						var nlr: Quaternion = anim.track_get_key_value(i, k)
 						if is_vmd:
-							# VMD rotations are local deltas, but authored in a world-aligned space.
-							# To apply them to a Godot bone, we must conjugate them into the parent's local space.
-							# W_parent_inv * nlr * W_dst == L_dst * W_dst_inv * nlr * W_dst
-							anim.track_set_key_value(i, k, L_dst * W_dst_q_inv * nlr * W_dst_q)
+							if is_root or is_ik:
+								# For Root and IK targets, raw VMD data is already Godot-forward.
+								# Since they are children of %ModelRoot, they inherit the character's facing.
+								anim.track_set_key_value(i, k, nlr)
+							else:
+								# For bones, use the standard world-rest conjugation
+								anim.track_set_key_value(i, k, L_dst * W_dst_q_inv * nlr * W_dst_q)
 						else:
 							# VRMA rotations are absolute world-space orientations.
-							# Formula: rest_local * world_rest_inv * anim_rot * world_rest
 							anim.track_set_key_value(i, k, L_dst * W_dst_q_inv * nlr * W_dst_q)
 
 				elif anim.track_get_type(i) == Animation.TYPE_POSITION_3D:
 					var local_rest: Vector3 = Vector3.ZERO
-					if is_ik and is_vmd:
-						# IK targets are Marker3D nodes in model-root space.
-						# The animation pos is a delta from the foot's MMD rest position.
-						local_rest = world_rests[bone_idx].origin
-						for k: int in range(anim.track_get_key_count(i)):
-							var pos: Vector3 = anim.track_get_key_value(i, k)
-							anim.track_set_key_value(i, k, local_rest + pos)
+					if is_vmd:
+						# VMD positions are deltas for bones, but absolute-local for Root/IK.
+						if is_root or is_ik:
+							local_rest = Vector3.ZERO
+						else:
+							local_rest = skeleton.get_bone_rest(bone_idx).origin
 					else:
-						var W_dst_inv_basis: Basis = W_dst_node.basis.inverse()
+						# VRMA/BVH positions are usually deltas from rest or absolute.
 						if not is_ik:
 							local_rest = skeleton.get_bone_rest(bone_idx).origin
 						else:
-							local_rest = skeleton.get_bone_global_pose(bone_idx).origin
-						for k: int in range(anim.track_get_key_count(i)):
-							var pos: Vector3 = anim.track_get_key_value(i, k)
-							anim.track_set_key_value(i, k, local_rest + (W_dst_inv_basis * pos))
+							local_rest = world_rests[bone_idx].origin
+
+					for k: int in range(anim.track_get_key_count(i)):
+						var pos: Vector3 = anim.track_get_key_value(i, k)
+						# For Root, rotate by the skeleton overall orientation (to match Anchor)
+						# For IK, apply raw (since it's a child of the already-rotated ModelRoot)
+						# For Hips, rotate by the hips' rest basis
+						var final_pos: Vector3 = local_rest
+						if is_root or is_ik:
+							final_pos += pos
+						else:
+							final_pos += W_dst_inv_basis * pos
+						anim.track_set_key_value(i, k, final_pos)
 
 
 func _compute_bone_world_rest(skeleton: Skeleton3D, bone_idx: int, skeleton_rot: Quaternion) -> Transform3D:

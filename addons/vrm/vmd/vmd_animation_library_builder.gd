@@ -6,8 +6,9 @@ extends RefCounted
 const VmdParser = preload("res://addons/vrm/vmd/vmd_parser.gd")
 const VmdBezier = preload("res://addons/vrm/vmd/vmd_bezier.gd")
 
+
 # MMD Bone Name (Japanese) -> VRM Humanoid Bone Name (camelCase)
-const BONE_MAP: Dictionary = {
+const BONE_MAP: Dictionary[String, String] = {
 	# 全ての親 intentionally excluded — it drives world locomotion (ModelRoot), not hips bone
 	"センター": "hips",
 	"グルーブ": "hips",
@@ -39,17 +40,20 @@ const BONE_MAP: Dictionary = {
 
 # Among hips-mapped bones, only these contribute POSITION (センター bounce/sway).
 # 下半身 (lower body) is a rotation-only divider and must not add position.
-const HIP_POSITION_BONES: Array = ["センター", "グルーブ"]
+const HIP_POSITION_BONES: Array[String] = ["センター", "グルーブ"]
+
+
 # Among hips-mapped bones, only these contribute ROTATION.
-const HIP_ROTATION_BONES: Array = ["センター", "グルーブ", "下半身"]
+const HIP_ROTATION_BONES: Array[String] = ["センター", "グルーブ", "下半身"]
 
 # The MMD global root bone that drives world locomotion.
 # This maps to a dedicated %ModelRoot track rather than the hips bone.
 const ROOT_PARENT_BONE: String = "全ての親"
 const MODEL_ROOT_VRM_NAME: String = "ModelRoot"
 
+
 # MMD Morph Name (Japanese) -> VRM Expression Name (camelCase)
-const MORPH_MAP: Dictionary = {
+const MORPH_MAP: Dictionary[String, String] = {
 	"真面目": "neutral",
 	"にっこり": "happy",
 	"困る": "sad",
@@ -69,7 +73,7 @@ const MORPH_MAP: Dictionary = {
 
 
 # Simplified Finger Mapping
-static func _setup_finger_map(m: Dictionary) -> void:
+static func _setup_finger_map(m: Dictionary[String, String]) -> void:
 	var sides: Array[String] = ["左", "右"]
 	var vrm_sides: Array[String] = ["left", "right"]
 	var fingers: Array[String] = ["親指", "人指", "中指", "薬指", "小指"]
@@ -99,8 +103,8 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 	var max_frame: int = 0
 
 	# 1. Group Bone Frames
-	var bone_frames_map: Dictionary = {}
-	for f in data.bone_frames:
+	var bone_frames_map: Dictionary[String, Array] = {}
+	for f: VmdParser.VmdBoneFrame in data.bone_frames:
 		if not bone_frames_map.has(f.name):
 			bone_frames_map[f.name] = []
 		bone_frames_map[f.name].append(f)
@@ -110,8 +114,8 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 	# 全ての親 (Root Parent) drives world locomotion and gets its OWN ModelRoot track.
 	# センター + グルーブ contribute position+rotation to hips.
 	# 下半身 contributes rotation-only to hips.
-	var vrm_contributors: Dictionary = {} # VRM_Name -> Array[MMD_Name]
-	for mmd_name in bone_frames_map:
+	var vrm_contributors: Dictionary[String, Array] = {} # VRM_Name -> Array[MMD_Name]
+	for mmd_name: String in bone_frames_map:
 		var vrm_name: String
 		if mmd_name == ROOT_PARENT_BONE:
 			vrm_name = MODEL_ROOT_VRM_NAME
@@ -127,40 +131,41 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 			vrm_name = bone_map_full.get(mmd_name, "")
 		if vrm_name == "": continue
 		if not vrm_contributors.has(vrm_name): vrm_contributors[vrm_name] = []
-		vrm_contributors[vrm_name].append(mmd_name)
+		(vrm_contributors[vrm_name] as Array).append(mmd_name)
 
 	# 2. Map and Merge Bone Frames with Interpolation
 	var merged_bone_data: Dictionary = {} # VRM_Name -> { frame_idx -> { pos: Vector3, rot: Quaternion } }
 
-	for vrm_name in vrm_contributors:
+	for vrm_name: String in vrm_contributors:
 		var mmd_names: Array = vrm_contributors[vrm_name]
 		var all_frames: Array[int] = []
-		var mmd_bone_tracks: Dictionary = {} # MMD_Name -> Sorted Frames Array
+		var mmd_bone_tracks: Dictionary[String, Array] = {} # MMD_Name -> Sorted Frames Array
 
-		for mmd_name in mmd_names:
-			var frames = bone_frames_map[mmd_name]
-			frames.sort_custom(func(a, b): return a.frame < b.frame)
+		for mmd_name: String in mmd_names:
+			var frames: Array = bone_frames_map[mmd_name]
+			frames.sort_custom(func(a: VmdParser.VmdBoneFrame, b: VmdParser.VmdBoneFrame) -> bool: return a.frame < b.frame)
 			mmd_bone_tracks[mmd_name] = frames
-			for f in frames:
+			for f: VmdParser.VmdBoneFrame in frames:
 				if not f.frame in all_frames: all_frames.append(f.frame)
 
 		all_frames.sort()
 		merged_bone_data[vrm_name] = {}
 
-		for frame_idx in all_frames:
+		for frame_idx: int in all_frames:
 			var total_pos: Vector3 = Vector3.ZERO
 			var total_rot: Quaternion = Quaternion.IDENTITY
 
-			for mmd_name in mmd_names:
-				var frames = mmd_bone_tracks[mmd_name]
+			for mmd_name: String in mmd_names:
+				var frames: Array = mmd_bone_tracks[mmd_name]
 				# Sample/Interpolate MMD bone at frame_idx
 				var sampled_pos: Vector3 = Vector3.ZERO
 				var sampled_rot: Quaternion = Quaternion.IDENTITY
 
 				if frames.size() > 0:
 					var found: bool = false
-					for i in range(frames.size()):
-						if frames[i].frame == frame_idx:
+					for i: int in range(frames.size()):
+						var frame: VmdParser.VmdBoneFrame = frames[i]
+						if frame.frame == frame_idx:
 							sampled_pos = frames[i].position * position_scale
 							sampled_rot = frames[i].rotation
 							found = true
@@ -168,8 +173,8 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 						elif frames[i].frame > frame_idx:
 							# Interpolate
 							if i > 0:
-								var prev = frames[i-1]
-								var next = frames[i]
+								var prev: VmdParser.VmdBoneFrame = frames[i - 1]
+								var next: VmdParser.VmdBoneFrame = frames[i]
 								var t: float = float(frame_idx - prev.frame) / (next.frame - prev.frame)
 								# Simplified linear for merge sampling
 								sampled_pos = prev.position.lerp(next.position, t) * position_scale
@@ -199,24 +204,15 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 
 			merged_bone_data[vrm_name][frame_idx] = {"pos": total_pos, "rot": total_rot}
 
-	# 2. Calculate initial offsets for centering and relative Y
-	var root_offset: Vector3 = Vector3.ZERO
+	# 2. Calculate initial Hips XZ for centering.
+	var initial_hips_xz: Vector3 = Vector3.ZERO
 	if merged_bone_data.has("hips"):
-		var hips_frames: Dictionary = merged_bone_data["hips"]
-		var keys: Array = hips_frames.keys()
+		var frames: Dictionary = merged_bone_data["hips"]
+		var keys: Array[int] = []
+		for k in frames.keys(): keys.append(k as int)
 		keys.sort()
 		if not keys.is_empty():
-			root_offset = hips_frames[keys[0]].pos
-
-	# Track separate initial Y for IK targets to ensure they stay grounded
-	var ik_y_offsets: Dictionary = {}
-	for vrm_name in merged_bone_data:
-		if "Ik" in vrm_name:
-			var frames: Dictionary = merged_bone_data[vrm_name]
-			var keys: Array = frames.keys()
-			keys.sort()
-			if not keys.is_empty():
-				ik_y_offsets[vrm_name] = frames[keys[0]].pos.y
+			initial_hips_xz = Vector3(frames[keys[0]].pos.x, 0.0, frames[keys[0]].pos.z)
 
 	# 3. Build Bone Tracks from merged data
 	for vrm_name: String in merged_bone_data:
@@ -224,9 +220,9 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 		if vrm_name == MODEL_ROOT_VRM_NAME:
 			track_path = NodePath("%ModelRoot")
 		elif "Ik" in vrm_name:
-			track_path = NodePath("%" + vrm_name)
+			track_path = NodePath("%"+ vrm_name)
 		else:
-			track_path = NodePath("%GeneralSkeleton:" + vrm_name)
+			track_path = NodePath("%GeneralSkeleton:"+ vrm_name)
 
 		# ModelRoot is a Node3D locomotion target, not a skeleton bone.
 		var is_model_root: bool = vrm_name == MODEL_ROOT_VRM_NAME
@@ -239,14 +235,13 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 			elif vrm_name == "rightShoulder":
 				pre_rot = Quaternion(Vector3.FORWARD, deg_to_rad(-10.0))
 			elif vrm_name == "leftUpperArm":
-				# MMD arms droop ~35 degrees and twist 90 degrees so elbows bend forward and palms face forward.
-				var droop = Quaternion(Vector3.FORWARD, deg_to_rad(20.0))
-				var twist = Quaternion(Vector3.LEFT, deg_to_rad(-40.0))
-				pre_rot = droop * twist
+				pre_rot = Quaternion(Vector3.FORWARD, deg_to_rad(20.0))
+			elif vrm_name == "leftLowerArm":
+				pre_rot = Quaternion(Vector3.LEFT, deg_to_rad(-50.0))
 			elif vrm_name == "rightUpperArm":
-				var droop = Quaternion(Vector3.FORWARD, deg_to_rad(-20.0))
-				var twist = Quaternion(Vector3.RIGHT, deg_to_rad(40.0))
-				pre_rot = droop * twist
+				pre_rot = Quaternion(Vector3.FORWARD, deg_to_rad(-20.0))
+			elif vrm_name == "rightLowerArm":
+				pre_rot = Quaternion(Vector3.RIGHT, deg_to_rad(50.0))
 
 
 		# ModelRoot only needs a POSITION track (world locomotion, consumed by root_motion_track).
@@ -262,7 +257,8 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 			anim.track_set_path(pos_track, track_path)
 
 		var vrm_frames: Dictionary = merged_bone_data[vrm_name]
-		var frame_indices: Array = vrm_frames.keys()
+		var frame_indices: Array[int] = []
+		for k: Variant in vrm_frames.keys(): frame_indices.append(k as int)
 		frame_indices.sort()
 
 		for i: int in range(frame_indices.size()):
@@ -273,18 +269,18 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 				anim.track_insert_key(rot_track, frame_idx * time_scale, pre_rot * data_at_frame.rot)
 
 			if pos_track != -1:
+				var root_pos: Vector3 = Vector3.ZERO
+				if merged_bone_data.has(MODEL_ROOT_VRM_NAME) and merged_bone_data[MODEL_ROOT_VRM_NAME].has(frame_idx):
+					root_pos = merged_bone_data[MODEL_ROOT_VRM_NAME][frame_idx].pos
+
 				var final_p: Vector3
-				if is_model_root:
-					# World-space locomotion: subtract initial offset to start at origin.
-					final_p = data_at_frame.pos - root_offset
-				elif "Ik" in vrm_name:
-					# IK targets: subtract hip XZ center, use IK-specific initial Y.
-					final_p = data_at_frame.pos - Vector3(root_offset.x, 0.0, root_offset.z)
-					final_p.y -= ik_y_offsets.get(vrm_name, root_offset.y)
+				if vrm_name == MODEL_ROOT_VRM_NAME:
+					# Locomotion track: center character horizontally at start
+					final_p = data_at_frame.pos - initial_hips_xz
 				else:
-					# Hips bone: remove initial full XYZ so it starts at local-space zero.
-					# The retargeter adds back the skeleton rest-pose origin.
-					final_p = data_at_frame.pos - root_offset
+					# Other tracks: VMD positions are deltas from rest.
+					# We keep them raw so they can be added to the Godot rest pose.
+					final_p = data_at_frame.pos
 				anim.track_insert_key(pos_track, frame_idx * time_scale, final_p)
 
 			# Interpolation (linear fallback for merged keys)
@@ -303,21 +299,27 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 
 						if pos_track != -1:
 							var sampled_p: Vector3 = data_at_frame.pos.lerp(next_data.pos, t)
-							var final_sampled: Vector3
-							if is_model_root:
-								final_sampled = sampled_p - root_offset
-							elif "Ik" in vrm_name:
-								final_sampled = sampled_p - Vector3(root_offset.x, 0.0, root_offset.z)
-								final_sampled.y -= ik_y_offsets.get(vrm_name, root_offset.y)
+							var current_root_pos: Vector3 = Vector3.ZERO
+							if merged_bone_data.has(MODEL_ROOT_VRM_NAME):
+								# For simplicity, we'll lerp the root too
+								var r_frames: Dictionary = merged_bone_data[MODEL_ROOT_VRM_NAME]
+								var root_start: Vector3 = r_frames.get(frame_idx, {"pos": Vector3.ZERO}).pos
+								var root_end: Vector3 = r_frames.get(next_frame_idx, {"pos": root_start}).pos
+								current_root_pos = root_start.lerp(root_end, t)
+
+							var final_p: Vector3
+							if vrm_name == MODEL_ROOT_VRM_NAME:
+								final_p = sampled_p - initial_hips_xz
 							else:
-								final_sampled = sampled_p - root_offset
-							anim.track_insert_key(pos_track, sub_frame * time_scale, final_sampled)
+								# Pure delta interpolation
+								final_p = sampled_p
+							anim.track_insert_key(pos_track, sub_frame * time_scale, final_p)
 
 	# 3. Build Camera Tracks
 	if data.camera_frames.size() > 0:
 		var camera_path: NodePath = NodePath("%VmdCamera")
 		var cam_frames: Array = data.camera_frames.duplicate()
-		cam_frames.sort_custom(func(a, b): return a.frame < b.frame)
+		cam_frames.sort_custom(func(a: VmdParser.VmdCameraFrame, b: VmdParser.VmdCameraFrame) -> bool: return a.frame < b.frame)
 
 		var cam_pos_track: int = anim.add_track(Animation.TYPE_POSITION_3D)
 		anim.track_set_path(cam_pos_track, camera_path)
@@ -339,7 +341,7 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 
 			# Sample interpolation if there's a next frame
 			if i + 1 < cam_frames.size():
-				var next: VmdParser.VmdCameraFrame = cam_frames[i+1]
+				var next: VmdParser.VmdCameraFrame = cam_frames[i + 1]
 				var frame_diff: int = next.frame - curr.frame
 				if frame_diff > 1:
 					var curves: Array[VmdBezier] = _extract_camera_curves(next.interpolation)
@@ -393,7 +395,7 @@ static func build(data: VmdParser.VmdData, _fps: float = 30.0, camera_y_offset: 
 	for mmd_name: String in morph_frames_map:
 		var vrm_expr: String = MORPH_MAP.get(mmd_name, mmd_name)
 		var prop_name: String = vrm_expr.to_snake_case()
-		var track_path: NodePath = NodePath("%Vrm1ExpressionController:" + prop_name)
+		var track_path: NodePath = NodePath("%Vrm1ExpressionController:"+ prop_name)
 
 		var track: int = anim.add_track(Animation.TYPE_VALUE)
 		anim.track_set_path(track, track_path)
@@ -414,7 +416,6 @@ static func _get_camera_transform(frame: VmdParser.VmdCameraFrame, y_offset: flo
 	# - Target position (X, Y, Z)
 	# - Rotation (Euler Radians)
 	# - Distance (Float)
-
 	# Mapping MMD Left-Handed to Godot Right-Handed:
 	# MMD Z+ is Forward, Godot Z- is Forward.
 	# To preserve visual rotation directions:

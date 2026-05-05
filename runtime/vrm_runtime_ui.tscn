@@ -94,7 +94,7 @@ layout_mode = 2
 [node name="ExpTitle" type="Label" parent="RightPanel/MarginContainer/VBoxContainer" unique_id=621367037]
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "Expressions"
+text = "Actions"
 horizontal_alignment = 1
 
 [node name="HSeparator" type="HSeparator" parent="RightPanel/MarginContainer/VBoxContainer" unique_id=925841830]

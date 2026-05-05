@@ -52,6 +52,7 @@ class VmdData:
 	var shadow_frames: Array[VmdShadowFrame] = []
 	var ik_display_frames: Array[VmdIkDisplayFrame] = []
 
+
 static func parse_file(path: String) -> VmdData:
 	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
 	if not file:
@@ -71,7 +72,7 @@ static func parse_file(path: String) -> VmdData:
 	# 2. Bone Frames
 	if file.get_position() < file.get_length():
 		var bone_count: int = file.get_32()
-		for i in range(bone_count):
+		for i: int in range(bone_count):
 			var frame: VmdBoneFrame = VmdBoneFrame.new()
 			frame.name = CP932Decoder.decode(file.get_buffer(15))
 			frame.frame = file.get_32()
@@ -97,7 +98,7 @@ static func parse_file(path: String) -> VmdData:
 	# 3. Morph Frames
 	if file.get_position() < file.get_length():
 		var morph_count: int = file.get_32()
-		for i in range(morph_count):
+		for i: int in range(morph_count):
 			var frame: VmdMorphFrame = VmdMorphFrame.new()
 			frame.name = CP932Decoder.decode(file.get_buffer(15))
 			frame.frame = file.get_32()
@@ -107,7 +108,7 @@ static func parse_file(path: String) -> VmdData:
 	# 4. Camera Frames
 	if file.get_position() < file.get_length():
 		var camera_count: int = file.get_32()
-		for i in range(camera_count):
+		for i: int in range(camera_count):
 			var frame: VmdCameraFrame = VmdCameraFrame.new()
 			frame.frame = file.get_32()
 			frame.distance = file.get_float()
@@ -125,7 +126,7 @@ static func parse_file(path: String) -> VmdData:
 	# 5. Light Frames
 	if file.get_position() < file.get_length():
 		var light_count: int = file.get_32()
-		for i in range(light_count):
+		for i: int in range(light_count):
 			var frame: VmdLightFrame = VmdLightFrame.new()
 			frame.frame = file.get_32()
 			frame.color = Color(file.get_float(), file.get_float(), file.get_float(), 1.0)
@@ -135,7 +136,7 @@ static func parse_file(path: String) -> VmdData:
 	# 6. Shadow Frames
 	if file.get_position() < file.get_length():
 		var shadow_count: int = file.get_32()
-		for i in range(shadow_count):
+		for i: int in range(shadow_count):
 			var frame: VmdShadowFrame = VmdShadowFrame.new()
 			frame.frame = file.get_32()
 			frame.mode = file.get_8()
@@ -145,12 +146,12 @@ static func parse_file(path: String) -> VmdData:
 	# 7. IK/Display Frames
 	if file.get_position() < file.get_length():
 		var ik_count: int = file.get_32()
-		for i in range(ik_count):
+		for i: int in range(ik_count):
 			var frame: VmdIkDisplayFrame = VmdIkDisplayFrame.new()
 			frame.frame = file.get_32()
 			frame.display = file.get_8() == 1
 			var link_count: int = file.get_32()
-			for j in range(link_count):
+			for j: int in range(link_count):
 				var link: VmdIkLink = VmdIkLink.new()
 				link.name = CP932Decoder.decode(file.get_buffer(20))
 				link.enabled = file.get_8() == 1

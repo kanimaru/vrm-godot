@@ -9,12 +9,14 @@ var y1: float
 var x2: float
 var y2: float
 
-func _init(p_x1: int, p_y1: int, p_x2: int, p_y2: int):
+
+func _init(p_x1: int, p_y1: int, p_x2: int, p_y2: int) -> void:
 	# Normalize from 0-127 to 0-1
 	x1 = p_x1 / 127.0
 	y1 = p_y1 / 127.0
 	x2 = p_x2 / 127.0
 	y2 = p_y2 / 127.0
+
 
 ## Finds the interpolation factor (y) for a given normalized time (x).
 func evaluate(x: float) -> float:
@@ -36,13 +38,16 @@ func evaluate(x: float) -> float:
 		
 	return _get_y(t)
 
+
 func _get_x(t: float) -> float:
 	var it := 1.0 - t
 	return 3 * it * it * t * x1 + 3 * it * t * t * x2 + t * t * t
 
+
 func _get_y(t: float) -> float:
 	var it := 1.0 - t
 	return 3 * it * it * t * y1 + 3 * it * t * t * y2 + t * t * t
+
 
 func _get_slope_x(t: float) -> float:
 	var it := 1.0 - t
