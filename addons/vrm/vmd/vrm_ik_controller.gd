@@ -5,6 +5,9 @@ const VRMUtil = preload("../common/vrm_util.gd")
 
 ## Manages runtime IK for VRM models, specifically for VMD leg movement.
 ## It creates virtual target nodes and configures SkeletonIK3D for the legs.
+##
+## Foot rotation is solved by mapping the VMD target to the bone's actual rest
+## world orientation. This makes the solver model-agnostic (no manual offsets).
 
 var skeleton: Skeleton3D = null
 var left_leg_ik: SkeletonIK3D = null
@@ -12,6 +15,8 @@ var right_leg_ik: SkeletonIK3D = null
 
 var left_target: Marker3D = null
 var right_target: Marker3D = null
+var left_toe_target: Marker3D = null
+var right_toe_target: Marker3D = null
 
 var enabled: bool = false:
 	set(v):
@@ -25,11 +30,23 @@ var debug: bool = false:
 
 var is_vrm0: bool = false
 
+# Bone rest orientations in skeleton-local space, cached at setup time.
+# These are used in _process() to correctly remap VMD world-space orientations
+# onto the model's actual rest pose, fixing the VRM 0/1 discrepancy without
+# requiring any manual pitch offset.
+var _left_foot_rest_skel: Quaternion = Quaternion.IDENTITY
+var _right_foot_rest_skel: Quaternion = Quaternion.IDENTITY
+var _left_toe_rest_skel: Quaternion = Quaternion.IDENTITY
+var _right_toe_rest_skel: Quaternion = Quaternion.IDENTITY
+
 
 func setup(p_skeleton: Skeleton3D, p_target_parent: Node = null, p_is_vrm0: bool = false) -> void:
 	skeleton = p_skeleton
 	is_vrm0 = p_is_vrm0
 	if not skeleton: return
+
+	# Ensure we run after AnimationPlayer to override its rotation tracks
+	process_priority = 10
 
 	var model: Node = skeleton.get_parent()
 	var target_parent: Node = p_target_parent if p_target_parent else model
@@ -46,6 +63,18 @@ func setup(p_skeleton: Skeleton3D, p_target_parent: Node = null, p_is_vrm0: bool
 	right_target.unique_name_in_owner = true
 	target_parent.add_child(right_target)
 	right_target.owner = target_parent.owner if target_parent.owner else target_parent
+
+	left_toe_target = Marker3D.new()
+	left_toe_target.name = "leftToeIk"
+	left_toe_target.unique_name_in_owner = true
+	target_parent.add_child(left_toe_target)
+	left_toe_target.owner = target_parent.owner if target_parent.owner else target_parent
+
+	right_toe_target = Marker3D.new()
+	right_toe_target.name = "rightToeIk"
+	right_toe_target.unique_name_in_owner = true
+	target_parent.add_child(right_toe_target)
+	right_toe_target.owner = target_parent.owner if target_parent.owner else target_parent
 
 	# Magnet orientation depends on model facing and bone rest.
 	# VRM 1.0 typically bends forward with +Z, while our retargeted VRM 0.0 needs -Z.
@@ -73,6 +102,18 @@ func setup(p_skeleton: Skeleton3D, p_target_parent: Node = null, p_is_vrm0: bool
 	right_leg_ik.override_tip_basis = false # We handle rotation manually in _process
 	skeleton.add_child(right_leg_ik)
 
+	# Cache each foot/toe bone's rest orientation in skeleton-local space.
+	# get_bone_global_rest() accumulates all parent rests up to (but not including)
+	# the skeleton node itself, so it is skeleton-local — not scene-world.
+	# In _process() we multiply by skeleton.global_transform to get true world space.
+	_left_foot_rest_skel = _bone_rest_skel_quat(left_leg_ik.tip_bone)
+	_right_foot_rest_skel = _bone_rest_skel_quat(right_leg_ik.tip_bone)
+
+	var left_toe_name: StringName = VRMUtil.get_humanoid_bone(model, "leftToes")
+	var right_toe_name: StringName = VRMUtil.get_humanoid_bone(model, "rightToes")
+	_left_toe_rest_skel = _bone_rest_skel_quat(left_toe_name)
+	_right_toe_rest_skel = _bone_rest_skel_quat(right_toe_name)
+
 
 func _update_ik_state() -> void:
 	if left_leg_ik:
@@ -88,6 +129,8 @@ func _update_ik_state() -> void:
 func _update_debug_viz() -> void:
 	_setup_debug_mesh(left_target, Color.RED)
 	_setup_debug_mesh(right_target, Color.GREEN)
+	_setup_debug_mesh(left_toe_target, Color.ORANGE)
+	_setup_debug_mesh(right_toe_target, Color.CYAN)
 
 
 func _setup_debug_mesh(target: Marker3D, color: Color) -> void:
@@ -112,28 +155,99 @@ func _setup_debug_mesh(target: Marker3D, color: Color) -> void:
 func _process(_delta: float) -> void:
 	if not enabled or not skeleton: return
 
+	# Force skeleton to update global poses so we can calculate relative rotation
+	# based on the latest IK solver positions.
+	skeleton.force_update_all_bone_transforms()
+
 	# SkeletonIK3D only solves position. We must manually sync rotation for the feet.
 	if left_leg_ik and left_target:
-		var bone_idx: int = skeleton.find_bone(left_leg_ik.tip_bone)
-		if bone_idx != -1:
-			var target_quat: Quaternion = left_target.global_transform.basis.get_rotation_quaternion()
-			var parent_idx: int = skeleton.get_bone_parent(bone_idx)
-			var parent_global_pose: Transform3D = skeleton.get_bone_global_pose(parent_idx)
-			var skeleton_global_transform: Transform3D = skeleton.global_transform
-			# Corrected Formula: Pose_Local = (Rest_Local).inverse() * (Parent_Global).inverse() * Target_Global
-			var rest_local_quat: Quaternion = skeleton.get_bone_rest(bone_idx).basis.get_rotation_quaternion()
-			var parent_global_rotation: Quaternion = (skeleton_global_transform.basis * parent_global_pose.basis).get_rotation_quaternion()
-			var pose_quat: Quaternion = rest_local_quat.inverse() * parent_global_rotation.inverse() * target_quat
-			skeleton.set_bone_pose_rotation(bone_idx, pose_quat)
+		_sync_bone_rotation(
+				left_leg_ik.tip_bone,
+				left_target.global_transform.basis.get_rotation_quaternion(),
+				_left_foot_rest_skel
+		)
 
 	if right_leg_ik and right_target:
-		var bone_idx = skeleton.find_bone(right_leg_ik.tip_bone)
-		if bone_idx != -1:
-			var target_quat = right_target.global_transform.basis.get_rotation_quaternion()
-			var parent_idx = skeleton.get_bone_parent(bone_idx)
-			var parent_global_pose = skeleton.get_bone_global_pose(parent_idx)
-			var skeleton_global_transform = skeleton.global_transform
-			var rest_local_quat = skeleton.get_bone_rest(bone_idx).basis.get_rotation_quaternion()
-			var parent_global_rotation = (skeleton_global_transform.basis * parent_global_pose.basis).get_rotation_quaternion()
-			var pose_quat = rest_local_quat.inverse() * parent_global_rotation.inverse() * target_quat
-			skeleton.set_bone_pose_rotation(bone_idx, pose_quat)
+		_sync_bone_rotation(
+				right_leg_ik.tip_bone,
+				right_target.global_transform.basis.get_rotation_quaternion(),
+				_right_foot_rest_skel
+		)
+
+	# Toe IK Sync (Rotation only)
+	var model: Node = skeleton.get_parent()
+	var left_toe_name: StringName = VRMUtil.get_humanoid_bone(model, "leftToes")
+	var right_toe_name: StringName = VRMUtil.get_humanoid_bone(model, "rightToes")
+
+	if left_toe_target and not left_toe_name.is_empty():
+		_sync_bone_rotation(
+				left_toe_name,
+				left_toe_target.global_transform.basis.get_rotation_quaternion(),
+				_left_toe_rest_skel
+		)
+
+	if right_toe_target and not right_toe_name.is_empty():
+		_sync_bone_rotation(
+				right_toe_name,
+				right_toe_target.global_transform.basis.get_rotation_quaternion(),
+				_right_toe_rest_skel
+		)
+
+
+## Returns the rest orientation of a named bone in skeleton-local space by
+## accumulating get_bone_rest() through all ancestors. This is equivalent to
+## get_bone_global_rest() but expressed purely from local rests so it is valid
+## even before the skeleton node has been placed in the scene tree.
+func _bone_rest_skel_quat(bone_name: StringName) -> Quaternion:
+	if not skeleton: return Quaternion.IDENTITY
+	var idx: int = skeleton.find_bone(bone_name)
+	if idx == -1: return Quaternion.IDENTITY
+
+	var basis: Basis = skeleton.get_bone_rest(idx).basis
+	var parent: int = skeleton.get_bone_parent(idx)
+	while parent >= 0:
+		basis = skeleton.get_bone_rest(parent).basis * basis
+		parent = skeleton.get_bone_parent(parent)
+
+	return basis.orthonormalized().get_rotation_quaternion()
+
+
+## Drives bone_name to the given VMD target orientation.
+##
+## Works entirely in skeleton-local space so skel_world cancels from the parent,
+## giving the identity:
+##
+##   bone_world = skel_world × bone_rest_skel × vmd_target
+##
+## For VRM 0 (skel_world = 180°_Y): 180°_Y × backward_rest  = flat foot ✓
+## For VRM 1 (skel_world = identity): identity  × forward_rest = flat foot ✓
+##
+## vmd_target is the IK marker's world-space rotation (world space is fine here
+## because it appears after the skeleton-local cancellation).
+func _sync_bone_rotation(
+		bone_name: StringName,
+		vmd_target: Quaternion,
+		bone_rest_skel: Quaternion
+) -> void:
+	var bone_idx: int = skeleton.find_bone(bone_name)
+	if bone_idx == -1: return
+
+	var parent_idx: int = skeleton.get_bone_parent(bone_idx)
+	if parent_idx == -1: return
+
+	# Parent's CURRENT global pose in SKELETON-LOCAL space (no skel_world here).
+	# IK may have moved the parent, but skel_world cancels in the final result.
+	var parent_skel_q: Quaternion = (
+			skeleton.get_bone_global_pose(parent_idx).basis.orthonormalized().get_rotation_quaternion()
+	)
+
+	var model_root: Node3D = skeleton.get_parent() as Node3D
+	var model_root_q: Quaternion = Quaternion.IDENTITY
+	if model_root:
+		model_root_q = model_root.global_transform.basis.orthonormalized().get_rotation_quaternion()
+	var vmd_target_model: Quaternion = model_root_q.inverse() * vmd_target
+
+	# Formula: pose = parent_skel_current⁻¹ × bone_rest_skel × vmd_target_model
+	# Result:  bone_global_pose = bone_rest_skel × vmd_target_model
+	var pose_quat: Quaternion = parent_skel_q.inverse() * bone_rest_skel * vmd_target_model
+	skeleton.set_bone_pose_rotation(bone_idx, pose_quat)

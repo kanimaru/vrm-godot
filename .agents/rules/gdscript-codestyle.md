@@ -1,6 +1,6 @@
 ---
-name: GDScript Project Conventions
-description: Rules and conventions for writing GDScript 2.0 and Godot 4 structures in this project, based on the official Godot Style Guide.
+trigger: glob
+globs: *.gd
 ---
 
 # GDScript Coding Standards & Godot Rules

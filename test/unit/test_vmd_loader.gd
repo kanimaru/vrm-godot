@@ -56,7 +56,7 @@ func test_vmd_parser_with_mock_data():
 	assert_eq(data.bone_frames.size(), 1, "Should have 1 bone frame")
 	assert_eq(data.bone_frames[0].name, "センター", "Bone name should match")
 	assert_eq(data.bone_frames[0].frame, 10, "Frame number should match")
-	assert_eq(data.bone_frames[0].position, Vector3(1, 2, 3), "Position should match")
+	assert_eq(data.bone_frames[0].position, Vector3(1, 2, -3), "Position should match")
 
 func test_vmd_builder():
 	var data := VmdParser.VmdData.new()

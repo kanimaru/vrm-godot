@@ -325,7 +325,7 @@ func _on_play_dance_pressed() -> void:
 		var has_ik: bool = false
 		for i: int in range(main_anim.get_track_count()):
 			var path: String = str(main_anim.track_get_path(i))
-			if "leftLegIk" in path or "rightLegIk" in path:
+			if "leftLegIk" in path or "rightLegIk" in path or "leftToeIk" in path or "rightToeIk" in path:
 				has_ik = true
 				break
 		ik_controller.enabled = has_ik
@@ -400,6 +400,8 @@ func load_vrm(path: String) -> void:
 		# Explicitly set owner to self for unique name resolution in AnimationPlayer
 		ik_controller.left_target.owner = self
 		ik_controller.right_target.owner = self
+		ik_controller.left_toe_target.owner = self
+		ik_controller.right_toe_target.owner = self
 
 	_update_expressions_ui()
 	_ui.set_model_loaded(true)
@@ -640,10 +642,7 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd:
 							if is_root or is_ik:
 								# For Root and IK targets, raw VMD data is already Godot-forward.
 								# Since they are children of %ModelRoot, they inherit the character's facing.
-								if is_vrm0 and is_ik:
-									# Apply 180-degree correction for VRM 0.0 foot targets
-									anim.track_set_key_value(i, k, nlr * Quaternion(Vector3.UP, PI))
-								else:
+								if is_ik or is_root:
 									anim.track_set_key_value(i, k, nlr)
 							else:
 								# For bones, use the standard world-rest conjugation
