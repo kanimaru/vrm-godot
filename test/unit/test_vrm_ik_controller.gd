@@ -192,19 +192,20 @@ func test_foot_rotation_sync_vrm0() -> void:
 	ik_controller._process(0.01)
 	skeleton.force_update_all_bone_transforms()
 	
-	# For VRM0, the skeleton is rotated 180 degrees Y, so in world space, the foot global rotation is:
-	# global_pose_world = skeleton.global_transform.basis.get_rotation_quaternion() * global_pose_skel
+	# With the corrected formula the controller converts vmd_target into
+	# skeleton-local space: vmd_target_skel = skel_world_q⁻¹ × vmd_target.
+	# The resulting skeleton-local global pose should be:
+	#   desired_global_pose = bone_rest_skel × vmd_target_skel
+	#
+	# For this test: skel_world_q = 180°Y, vmd_target = identity
+	#   vmd_target_skel  = 180°Y⁻¹ × identity = 180°Y
+	#   desired_global_pose = foot_rest_skel × 180°Y
+	var skel_world_q := skeleton.global_transform.basis.orthonormalized().get_rotation_quaternion()
+	var vmd_target_skel := skel_world_q.inverse() * Quaternion.IDENTITY
+	var expected_skel_q := ik_controller._left_foot_rest_skel * vmd_target_skel
+
 	var foot_global_skel := skeleton.get_bone_global_pose(left_foot_idx).basis.orthonormalized().get_rotation_quaternion()
-	var foot_global_world := skeleton.global_transform.basis.orthonormalized().get_rotation_quaternion() * foot_global_skel
-	
-	# We expect the world rotation of the foot to be flat pointing forward (which matches the target orientation)
-	# wait!
-	# The rest basis has pitch angle -20 degrees.
-	# So when the animation is at identity, we expect the foot to be at its rest orientation in world space!
-	# Since skeleton has 180 degrees Y rotation, the world rest orientation of the foot is:
-	# world_rest = 180_deg_Y * rest_skel
-	var expected_world_q := Quaternion(Vector3.UP, PI) * foot_rest_basis.get_rotation_quaternion()
-	assert_eq_relative_rotation(foot_global_world, expected_world_q, "Foot global world rotation should match world rest rotation when target is identity")
+	assert_eq_relative_rotation(foot_global_skel, expected_skel_q, "Foot skeleton-local global rotation should match expected pose")
 
 
 # Helper to assert quaternions are approximately equal

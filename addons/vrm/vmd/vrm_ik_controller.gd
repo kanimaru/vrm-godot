@@ -214,16 +214,16 @@ func _bone_rest_skel_quat(bone_name: StringName) -> Quaternion:
 
 ## Drives bone_name to the given VMD target orientation.
 ##
-## Works entirely in skeleton-local space so skel_world cancels from the parent,
-## giving the identity:
+## Converts the world-space vmd_target into skeleton-local space so the
+## formula works regardless of whether the skeleton is rotated (VRM 0)
+## or identity (VRM 1).  The IK targets may be parented to any ancestor
+## of the skeleton, so we use the skeleton's own global rotation as the
+## reference rather than its immediate parent.
 ##
-##   bone_world = skel_world × bone_rest_skel × vmd_target
+##   desired_global_pose = bone_rest_skel × vmd_target_skel
+##   pose_quat           = parent_skel⁻¹ × desired_global_pose
 ##
-## For VRM 0 (skel_world = 180°_Y): 180°_Y × backward_rest  = flat foot ✓
-## For VRM 1 (skel_world = identity): identity  × forward_rest = flat foot ✓
-##
-## vmd_target is the IK marker's world-space rotation (world space is fine here
-## because it appears after the skeleton-local cancellation).
+## vmd_target is the IK marker's world-space rotation.
 func _sync_bone_rotation(
 		bone_name: StringName,
 		vmd_target: Quaternion,
@@ -241,13 +241,16 @@ func _sync_bone_rotation(
 			skeleton.get_bone_global_pose(parent_idx).basis.orthonormalized().get_rotation_quaternion()
 	)
 
-	var model_root: Node3D = skeleton.get_parent() as Node3D
-	var model_root_q: Quaternion = Quaternion.IDENTITY
-	if model_root:
-		model_root_q = model_root.global_transform.basis.orthonormalized().get_rotation_quaternion()
-	var vmd_target_model: Quaternion = model_root_q.inverse() * vmd_target
+	# Convert world-space target into skeleton-local space.
+	# We use the skeleton's OWN global rotation (not its parent's) so the
+	# formula is correct even when the skeleton has an extra rotation
+	# relative to the scene root (e.g. VRM 0's 180° Y offset).
+	var skel_world_q: Quaternion = (
+			skeleton.global_transform.basis.orthonormalized().get_rotation_quaternion()
+	)
+	var vmd_target_skel: Quaternion = skel_world_q.inverse() * vmd_target
 
-	# Formula: pose = parent_skel_current⁻¹ × bone_rest_skel × vmd_target_model
-	# Result:  bone_global_pose = bone_rest_skel × vmd_target_model
-	var pose_quat: Quaternion = parent_skel_q.inverse() * bone_rest_skel * vmd_target_model
+	# desired global pose (skeleton-local) = rest_skel × target_skel
+	# pose = parent_skel⁻¹ × desired_global_pose
+	var pose_quat: Quaternion = parent_skel_q.inverse() * bone_rest_skel * vmd_target_skel
 	skeleton.set_bone_pose_rotation(bone_idx, pose_quat)
