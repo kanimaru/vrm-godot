@@ -46,6 +46,7 @@ static func build(state: GLTFState, scene: Node) -> AnimationLibrary:
 	var name_to_idx: Dictionary = _build_name_to_idx(state)
 	var world_rests: Dictionary = _compute_world_rest_rotations(state)
 	var local_rests: Dictionary = _get_local_rest_rotations(state)
+	var local_translations: Dictionary = _get_local_rest_translations(state)
 
 	var anim_player: AnimationPlayer = VRMUtil.find_animation_player(scene)
 	if anim_player == null:
@@ -62,7 +63,7 @@ static func build(state: GLTFState, scene: Node) -> AnimationLibrary:
 	for anim_name: StringName in source_lib.get_animation_list():
 		var source_anim: Animation = source_lib.get_animation(anim_name)
 		var retargeted: Animation = _retarget_animation(
-			source_anim, role_map, name_to_idx, world_rests, local_rests
+			source_anim, role_map, name_to_idx, world_rests, local_rests, local_translations
 		)
 		library.add_animation(anim_name, retargeted)
 
@@ -148,6 +149,14 @@ static func _get_local_rest_rotations(state: GLTFState) -> Dictionary:
 	return map
 
 
+static func _get_local_rest_translations(state: GLTFState) -> Dictionary:
+	var map: Dictionary = {}
+	var gltf_nodes: Array[GLTFNode] = state.get_nodes()
+	for i: int in range(gltf_nodes.size()):
+		map[i] = gltf_nodes[i].position
+	return map
+
+
 static func _compute_world_rest_rotations(state: GLTFState) -> Dictionary:
 	var map: Dictionary = {}
 	var gltf_nodes: Array[GLTFNode] = state.get_nodes()
@@ -177,6 +186,7 @@ static func _retarget_animation(
 	name_to_idx: Dictionary,
 	world_rests: Dictionary,
 	local_rests: Dictionary,
+	local_translations: Dictionary,
 ) -> Animation:
 	var out: Animation = Animation.new()
 	out.length = source.length
@@ -197,7 +207,10 @@ static func _retarget_animation(
 
 		match role["type"]:
 			"bone":
-				_add_bone_tracks(source, t, track_type, node_idx, role, out, world_rests, local_rests)
+				_add_bone_tracks(
+					source, t, track_type, node_idx, role, out,
+					world_rests, local_rests, local_translations
+				)
 			"expression":
 				if track_type == Animation.TYPE_POSITION_3D:
 					_add_expression_track(source, t, role, out)
@@ -224,6 +237,7 @@ static func _add_bone_tracks(
 	out: Animation,
 	world_rests: Dictionary,
 	local_rests: Dictionary,
+	local_translations: Dictionary,
 ) -> void:
 	# Use the VRM role name (camelCase) — this is the actual bone name in VRM models.
 	var vrm_name: String = role.get("vrm_name", "")
@@ -253,10 +267,17 @@ static func _add_bone_tracks(
 		out.track_set_path(new_t, target_path)
 		out.track_set_interpolation_type(new_t, source.track_get_interpolation_type(t))
 
+		# Store delta from the VRMA T-pose rest position, not raw absolute.
+		# This lets the retargeter apply a clean proportional height-ratio scale
+		# regardless of where the animation starts (e.g. mid-jump).
+		var hips_rest_pos: Vector3 = local_translations.get(node_idx, Vector3.ZERO)
+
 		for k: int in range(key_count):
 			var time: float = source.track_get_key_time(t, k)
 			var pos: Vector3 = source.track_get_key_value(t, k)
-			out.track_insert_key(new_t, time, pos)
+			out.track_insert_key(new_t, time, pos - hips_rest_pos)
+
+		out.set_meta(&"vrma_hips_rest_pos", hips_rest_pos)
 
 
 static func _add_expression_track(

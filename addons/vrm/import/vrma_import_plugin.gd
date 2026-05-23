@@ -64,10 +64,15 @@ func _import(
 	platform_variants: Array[String],
 	gen_files: Array[String],
 ) -> Error:
+	var vrma_extension = load("res://addons/vrm/vrma/vrma_extension.gd").new()
+	GLTFDocument.register_gltf_document_extension(vrma_extension)
+
 	var gltf: GLTFDocument = GLTFDocument.new()
 	var state: GLTFState = GLTFState.new()
 
 	var err: Error = gltf.append_from_file(source_file, state, 0)
+	GLTFDocument.unregister_gltf_document_extension(vrma_extension)
+
 	if err != OK:
 		printerr("VrmaImportPlugin: Failed to parse '", source_file, "' (", err, ")")
 		return err
@@ -81,7 +86,12 @@ func _import(
 	scene.free()
 
 	if library == null:
+		printerr("VrmaImportPlugin: Generated AnimationLibrary is null for '", source_file, "'")
 		return FAILED
 
 	var save_err: Error = ResourceSaver.save(library, save_path + "." + _get_save_extension())
+	if save_err != OK:
+		printerr("VrmaImportPlugin: Failed to save AnimationLibrary to '", save_path, "' (", save_err, ")")
 	return save_err
+
+

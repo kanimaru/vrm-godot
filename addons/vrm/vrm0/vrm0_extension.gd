@@ -211,7 +211,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 
 	var skeleton: Skeleton3D = VRMUtil.find_skeleton(root)
 	if skeleton != null:
-		skeleton.name = "GeneralSkeleton"
+		skeleton.name = &"GeneralSkeleton"
 		skeleton.unique_name_in_owner = true
 
 	# Store a vrm_role -> actual_bone_name lookup on the root so VrmaAnimationLibraryBuilder
@@ -229,6 +229,21 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			humanoid_bone_map[bone_data.bone.to_lower()] = bone_name
 		VRMUtil.set_humanoid_bone_map(root, humanoid_bone_map)
 
+	var retargeter_script := load("res://addons/vrm/common/vrm_animation_retargeter.gd")
+	if retargeter_script != null:
+		var retargeter: Node = Node.new()
+		retargeter.set_script(retargeter_script)
+		retargeter.name = &"VrmAnimationRetargeter"
+
+		# Find the animation player to link it
+		var anim_player: AnimationMixer = VRMUtil.find_animation_player(root)
+
+		if anim_player != null:
+			retargeter.animation_player = anim_player
+
+		root.add_child(retargeter, true)
+		retargeter.owner = root
+
 	if skeleton != null and vrm_top_level.secondary_animation != null:
 		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
 		var node_names: Dictionary[int, String] = {}
@@ -241,7 +256,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 				node_names[i] = node_name
 
 		var spring_sim: Vrm0SpringBoneSimulator = Vrm0SpringBoneSimulator.new()
-		spring_sim.name = "Vrm0SpringBoneSimulator"
+		spring_sim.name = &"Vrm0SpringBoneSimulator"
 		spring_sim.secondary_animation = vrm_top_level.secondary_animation
 		spring_sim.gltf_node_names = node_names
 
@@ -250,14 +265,14 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 
 	if vrm_top_level.blend_shape_master != null:
 		var expr_controller: Vrm0ExpressionController = Vrm0ExpressionController.new()
-		expr_controller.name = "Vrm0ExpressionController"
+		expr_controller.name = &"Vrm0ExpressionController"
 		expr_controller.unique_name_in_owner = true
 		root.add_child(expr_controller, true)
 		expr_controller.owner = root
 		expr_controller.compile_vrm0_binds(vrm_top_level.blend_shape_master, state, root)
 
 	# --- MToon Material Replacement ---
-	var mtoon_configs: Variant = state.get_additional_data("vrm0_mtoon")
+	var mtoon_configs: Variant = state.get_additional_data(&"vrm0_mtoon")
 	if mtoon_configs is Array:
 		var gltf_materials: Array = state.get_materials()
 

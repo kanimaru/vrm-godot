@@ -30,24 +30,24 @@ static func get_humanoid_bone(model: Node, role: String) -> StringName:
 static func find_bone(skeleton: Skeleton3D, model: Node, bone_name: String) -> String:
 	if skeleton == null:
 		return ""
-	
+
 	# 1. Exact match
 	if skeleton.find_bone(bone_name) != -1:
 		return bone_name
-	
+
 	# 2. Metadata lookup (VRM Role -> Actual Name)
 	var role_name = get_humanoid_bone(model, bone_name)
 	if not role_name.is_empty():
 		if skeleton.find_bone(role_name) != -1:
 			return role_name
-	
+
 	# 3. Case-insensitive match
 	var lower_name = bone_name.to_lower()
 	for i in range(skeleton.get_bone_count()):
 		var b_name = skeleton.get_bone_name(i)
 		if b_name.to_lower() == lower_name:
 			return b_name
-			
+
 	return ""
 
 

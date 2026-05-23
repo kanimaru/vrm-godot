@@ -48,46 +48,88 @@ func _setup_signal() -> void:
 
 
 func _retarget_all_animations() -> void:
+	if skeleton == null or animation_player == null:
+		return
+
 	var root: Node = get_parent()
 	print("[VRM Retargeter] Starting retargeting for avatar: " + root.name)
 
-	# Start retargeting
-
-	for lib_name in animation_player.get_animation_library_list():
+	var libs_to_replace: Dictionary = {}
+	for lib_name: StringName in animation_player.get_animation_library_list():
 		var lib: AnimationLibrary = animation_player.get_animation_library(lib_name)
-		print("[VRM Retargeter] Checking library: " + str(lib_name))
-		for anim_name in lib.get_animation_list():
+		if lib.has_meta(&"retargeted_for_skeleton"):
+			var target_id: int = lib.get_meta(&"retargeted_for_skeleton")
+			if target_id == skeleton.get_instance_id():
+				continue
+		libs_to_replace[lib_name] = lib
+
+	for lib_name: StringName in libs_to_replace:
+		var lib: AnimationLibrary = libs_to_replace[lib_name]
+		var new_lib: AnimationLibrary = AnimationLibrary.new()
+		for anim_name: StringName in lib.get_animation_list():
 			var anim: Animation = lib.get_animation(anim_name)
-			_retarget_animation(anim)
+			var new_anim: Animation = anim.duplicate(true)
+			_retarget_animation(new_anim)
+			new_lib.add_animation(anim_name, new_anim)
+
+		new_lib.set_meta(&"retargeted_for_skeleton", skeleton.get_instance_id())
+		animation_player.remove_animation_library(lib_name)
+		animation_player.add_animation_library(lib_name, new_lib)
 
 
 func _retarget_animation(anim: Animation) -> void:
 	var fixed_count: int = 0
 	var total_bone_tracks: int = 0
 	var root: Node = get_parent()
-	
-	for i in range(anim.get_track_count()):
+
+	var resolved_hips_name: String = VRMUtil.find_bone(skeleton, root, "hips")
+	var has_hips_scale: bool = false
+	var scale_factor: float = 1.0
+	var vrma_hips_rest_pos: Vector3 = Vector3.ZERO
+	var target_hips_rest_pos: Vector3 = Vector3.ZERO
+
+	if not resolved_hips_name.is_empty() and anim.has_meta(&"vrma_hips_rest_pos"):
+		var hips_bone_idx: int = skeleton.find_bone(resolved_hips_name)
+		if hips_bone_idx != -1:
+			var meta_pos: Variant = anim.get_meta(&"vrma_hips_rest_pos")
+			if meta_pos is Vector3:
+				vrma_hips_rest_pos = meta_pos
+				target_hips_rest_pos = skeleton.get_bone_rest(hips_bone_idx).origin
+				if vrma_hips_rest_pos.y > 0.0001 and target_hips_rest_pos.y > 0.0001:
+					scale_factor = target_hips_rest_pos.y / vrma_hips_rest_pos.y
+					has_hips_scale = true
+					print("[VRM Retargeter] Hips scaling enabled. Source height: ", vrma_hips_rest_pos.y, ", Target height: ", target_hips_rest_pos.y, ", Scale factor: ", scale_factor)
+
+	for i: int in range(anim.get_track_count()):
 		var path: NodePath = anim.track_get_path(i)
 		var path_str: String = str(path)
-		
+
 		if not "%GeneralSkeleton:" in path_str:
 			continue
-			
+
 		total_bone_tracks += 1
 		var parts: Array = path_str.split(":")
 		if parts.size() < 2:
 			continue
-			
+
 		var bone_name: String = parts[1]
 		var resolved_name: String = VRMUtil.find_bone(skeleton, root, bone_name)
-		
+
 		if resolved_name.is_empty():
 			print("[VRM Retargeter] FAILED to resolve bone: " + bone_name)
 			continue
-			
+
 		if resolved_name != bone_name:
 			_update_track_path(anim, i, parts, resolved_name)
 			fixed_count += 1
+
+		if has_hips_scale and resolved_name == resolved_hips_name and anim.track_get_type(i) == Animation.TYPE_POSITION_3D:
+			var key_count: int = anim.track_get_key_count(i)
+			for k: int in range(key_count):
+				var pos: Vector3 = anim.track_get_key_value(i, k)
+				var new_pos: Vector3 = target_hips_rest_pos + (pos - vrma_hips_rest_pos) * scale_factor
+				anim.track_set_key_value(i, k, new_pos)
+			print("[VRM Retargeter] Scaled hips position track for bone: ", resolved_name, " in animation: ", anim.resource_name)
 
 	if fixed_count > 0:
 		print("[VRM Retargeter] Fixed " + str(fixed_count) + "/" + str(total_bone_tracks) + " tracks in animation: " + anim.resource_name)
