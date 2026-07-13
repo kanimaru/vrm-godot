@@ -2,12 +2,13 @@
 class_name VmdDebugSkeleton
 extends Node3D
 
-## Visualizes raw VMD motion data as an animated wire-frame stick figure.
+## Visualises raw VMD motion data as an animated wire-frame stick figure.
 ## No retargeting is applied — what you see is exactly what is in the VMD file
 ## after coordinate conversion (Z-flip) and scale (* 0.1).
 ## Useful for debugging bone rotations and positions before applying to a VRM skeleton.
 
 const VmdParser = preload("res://addons/vrm/vmd/vmd_parser.gd")
+const VmdFormat = preload("res://addons/vrm/vmd/vmd_format.gd")
 const VmdAnimationLibraryBuilder = preload("res://addons/vrm/vmd/vmd_animation_library_builder.gd")
 
 # MMD humanoid hierarchy: bone_name -> parent_bone_name (empty string = root)
@@ -100,46 +101,48 @@ static var BONE_REST_OFFSETS: Dictionary = {
 }
 
 
+## Populates [constant HIERARCHY], [constant BONE_LENGTHS], and
+## [constant BONE_REST_OFFSETS] with finger joint entries for both hands.
 static func _init_hierarchy_and_offsets() -> void:
-	var sides = ["left", "right"]
-	var fingers = ["Thumb", "Index", "Middle", "Ring", "Little"]
-	var joints = ["Proximal", "Intermediate", "Distal"]
-	var thumb_joints = ["Metacarpal", "Proximal", "Distal"]
-	
-	for s in range(2):
-		var side = sides[s]
-		var side_sign = -1.0 if s == 0 else 1.0
-		var hand = side + "Hand"
-		
-		for f in range(5):
-			var finger = fingers[f]
-			var parent = hand
-			for j in range(3):
-				var joint = joints[j]
-				if finger == "Thumb": joint = thumb_joints[j]
-				var bone = side + finger + joint
-				
+	var sides: Array[String] = ["left", "right"]
+	var fingers: Array[String] = ["Thumb", "Index", "Middle", "Ring", "Little"]
+	var joints: Array[String] = ["Proximal", "Intermediate", "Distal"]
+	var thumb_joints: Array[String] = ["Metacarpal", "Proximal", "Distal"]
+
+	for side_idx: int in range(2):
+		var side: String = sides[side_idx]
+		var side_sign: float = -1.0 if side_idx == 0 else 1.0
+		var hand: String = side + "Hand"
+
+		for finger_idx: int in range(5):
+			var finger: String = fingers[finger_idx]
+			var parent: String = hand
+			for joint_idx: int in range(3):
+				var joint: String = joints[joint_idx]
+				if finger == "Thumb": joint = thumb_joints[joint_idx]
+				var bone: String = side + finger + joint
+
 				HIERARCHY[bone] = parent
 				BONE_LENGTHS[bone] = 0.03 if finger == "Thumb" else 0.04
-				
+
 				# Offset
-				if j == 0:
+				if joint_idx == 0:
 					# Hand to Proximal
-					var spread_y = (f - 2) * 0.01
-					var spread_z = (f - 2) * 0.005 # Reversed spread for forward -Z
-					var length = side_sign * -0.04
+					var spread_y: float = (finger_idx - 2) * 0.01
+					var spread_z: float = (finger_idx - 2) * 0.005 # Reversed spread for forward -Z
+					var length: float = side_sign * -0.04
 					if finger == "Thumb":
 						BONE_REST_OFFSETS[bone] = Vector3(side_sign * -0.02, -0.01, -0.02)
 					else:
 						BONE_REST_OFFSETS[bone] = Vector3(length, spread_y, spread_z)
 				else:
 					# Chain offsets
-					var length = side_sign * -0.035
+					var length: float = side_sign * -0.035
 					if finger == "Thumb":
 						BONE_REST_OFFSETS[bone] = Vector3(side_sign * -0.03, -0.01, -0.01)
 					else:
-						BONE_REST_OFFSETS[bone] = Vector3(length, 0, 0)
-				
+						BONE_REST_OFFSETS[bone] = Vector3(length, 0.0, 0.0)
+
 				parent = bone
 
 static var _initialized := false
@@ -153,7 +156,7 @@ var _bone_nodes: Dictionary = {}  # bone_name -> Node3D pivot
 var _player: AnimationPlayer = null
 
 
-func setup(vmd_data: VmdParser.VmdData) -> void:
+func setup(vmd_data: VmdFormat.VmdData) -> void:
 	_clear()
 	_build_stick_figure()
 	_build_animation(vmd_data)
@@ -272,7 +275,7 @@ func _add_bone_sphere(parent: Node3D, bone_name: String) -> void:
 
 # --- Animation construction ---
 
-func _build_animation(vmd_data: VmdParser.VmdData) -> void:
+func _build_animation(vmd_data: VmdFormat.VmdData) -> void:
 	var anim: Animation = Animation.new()
 	var time_scale: float = 1.0 / 30.0
 	var max_frame: int = 0
@@ -283,7 +286,7 @@ func _build_animation(vmd_data: VmdParser.VmdData) -> void:
 	
 	var raw_frames: Dictionary = {}  # VRM_name -> Array[VmdBoneFrame]
 
-	for f: VmdParser.VmdBoneFrame in vmd_data.bone_frames:
+	for f: VmdFormat.VmdBoneFrame in vmd_data.bone_frames:
 		var vrm_name: String = bone_map.get(f.name, "")
 		if vrm_name == "" or not HIERARCHY.has(vrm_name):
 			continue
@@ -293,27 +296,27 @@ func _build_animation(vmd_data: VmdParser.VmdData) -> void:
 		max_frame = max(max_frame, f.frame)
 
 	for vrm_name in raw_frames:
-		var frames = raw_frames[vrm_name]
+		var frames: Array = raw_frames[vrm_name]
 		# 3D Rotation track — raw converted VMD rotation.
 		var node_path: NodePath = _build_node_path(vrm_name)
 		var rot_track: int = anim.add_track(Animation.TYPE_ROTATION_3D)
 		anim.track_set_path(rot_track, node_path)
-		
+
 		# Position track — only for hips (center provides translation).
 		var pos_track: int = -1
 		if vrm_name == "hips":
 			pos_track = anim.add_track(Animation.TYPE_POSITION_3D)
 			anim.track_set_path(pos_track, node_path)
 
-		for f: VmdParser.VmdBoneFrame in frames:
-			var t: float = f.frame * time_scale
+		for bone_frame: VmdFormat.VmdBoneFrame in frames:
+			var interp_time: float = bone_frame.frame * time_scale
 			# Rotation is already converted to Godot space in the parser (-X, -Y, Z, W).
-			anim.track_insert_key(rot_track, t, f.rotation)
+			anim.track_insert_key(rot_track, interp_time, bone_frame.rotation)
 			if pos_track != -1:
 				# VMD position is delta from rest.
 				# For the debug skeleton, rest position is already set in _build_stick_figure.
 				# So we just add the animated delta.
-				anim.track_insert_key(pos_track, t, BONE_REST_OFFSETS["hips"] + (f.position * 0.1))
+				anim.track_insert_key(pos_track, interp_time, BONE_REST_OFFSETS["hips"] + (bone_frame.position * 0.1))
 
 	anim.length = max_frame * time_scale
 

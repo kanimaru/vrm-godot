@@ -6,50 +6,55 @@ extends Object
 
 static var _mapping: Dictionary = {}
 
-## Decodes a PackedByteArray containing CP932 encoded text.
+## Decodes a [PackedByteArray] containing CP932 (Shift-JIS) encoded text.
+##
+## Handles ASCII (pass-through), half-width Katakana (U+FF61–U+FF9F),
+## and double-byte characters via an internal JSON lookup table.
+## Stops at a null byte (0x00) or the MMD-specific padding byte (0xFD).
+## Unmapped double-byte sequences are replaced with [code]"?"[/code].
 static func decode(data: PackedByteArray) -> String:
 	if _mapping.is_empty():
 		_load_mapping()
-	
+
 	var result := ""
-	var i := 0
-	while i < data.size():
-		var b1 := data[i]
-		
+	var byte_idx := 0
+	while byte_idx < data.size():
+		var lead_byte := data[byte_idx]
+
 		# 1. Null terminator or padding (MMD specific)
-		if b1 == 0 or b1 == 0xFD:
+		if lead_byte == 0 or lead_byte == 0xFD:
 			break
-			
+
 		# 2. ASCII range (0x00 - 0x7F)
-		if b1 <= 0x7F:
-			result += char(b1)
-			i += 1
+		if lead_byte <= 0x7F:
+			result += char(lead_byte)
+			byte_idx += 1
 			continue
-			
+
 		# 3. Half-width Katakana (0xA1 - 0xDF)
 		# These map to Unicode U+FF61 to U+FF9F
-		if b1 >= 0xA1 and b1 <= 0xDF:
-			result += char(b1 + 0xFEC0)
-			i += 1
+		if lead_byte >= 0xA1 and lead_byte <= 0xDF:
+			result += char(lead_byte + 0xFEC0)
+			byte_idx += 1
 			continue
-			
+
 		# 4. Multi-byte range (Lead bytes: 0x81-0x9F, 0xE0-0xFC)
-		if i + 1 < data.size():
-			var b2 := data[i + 1]
-			var code := (b1 << 8) | b2
-			
+		if byte_idx + 1 < data.size():
+			var trail_byte := data[byte_idx + 1]
+			var code := (lead_byte << 8) | trail_byte
+
 			# Check our lookup table
 			var unicode = _mapping.get(str(code))
 			if unicode != null:
 				result += char(int(unicode))
 			else:
 				result += "?" # Fallback for unmapped characters
-			i += 2
+			byte_idx += 2
 		else:
 			# Orphaned lead byte at end of data
 			result += "?"
-			i += 1
-			
+			byte_idx += 1
+
 	return result
 
 static func _load_mapping() -> void:
