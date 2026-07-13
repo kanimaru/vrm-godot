@@ -1,3 +1,14 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# IDE
+.idea/
+
+# GUT test run output
+gut_out.txt
+
+# graphify: machine-local paths and regenerable extraction cache
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/cache/
