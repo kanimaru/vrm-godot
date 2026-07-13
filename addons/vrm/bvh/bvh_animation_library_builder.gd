@@ -125,7 +125,7 @@ static func build(bvh_data: BvhParser.BvhData, fps: float = 30.0, scale_factor: 
 
 		# Only the BVH root bone carries a meaningful animated position track.
 		# All other bones define their offset in OFFSET, not per-frame MOTION.
-		if has_position and is_root_node:
+		if has_position:
 			var pos_track: int = anim.add_track(Animation.TYPE_POSITION_3D)
 			anim.track_set_path(pos_track, path)
 			anim.track_set_interpolation_type(
