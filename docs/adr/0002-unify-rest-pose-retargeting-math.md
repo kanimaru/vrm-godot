@@ -1,7 +1,7 @@
 # ADR-0002: Unify Rest-Pose Retargeting Math
 
-**Status:** Proposed
-**Date:** 2026-07-13
+**Status:** Superseded — investigation disproved the premise, see Outcome below
+**Date:** 2026-07-13 (superseded 2026-07-13)
 **Deciders:** kanimaru
 
 ## Context
@@ -72,12 +72,60 @@ that the current use cases don't need.
 - Revisit: `VrmAnimationRetargeter`'s bone-path-rewrite approach stays separate — it solves bone
   *identity* resolution, not rotation math, and shouldn't be folded into this utility.
 
-## Action Items
+## Action Items (superseded — not executed as written)
 
-1. [ ] Add `world_to_local_rotation(local_rot, world_rest, local_rest) -> Quaternion` (and its
-       inverse) to `addons/vrm/common/vrm_util.gd` or a new `common/vrm_rest_pose_math.gd`
-2. [ ] Refactor `VrmaAnimationLibraryBuilder._normalize_rotation` to delegate to the shared function
-3. [ ] Verify `VrmIkController._sync_bone_rotation`'s math is equivalent, then refactor it to
-       delegate to the same shared function
-4. [ ] Add a GUT unit test exercising the shared function against known rest poses
-5. [ ] Regression-test VMD dance playback IK behavior and VRMA animation import visually
+1. [x] ~~Add `world_to_local_rotation(local_rot, world_rest, local_rest) -> Quaternion`~~ —
+       not added; see Outcome below
+2. [x] ~~Refactor `VrmaAnimationLibraryBuilder._normalize_rotation` to delegate~~ — not done
+3. [x] Verify `VrmIkController._sync_bone_rotation`'s math is equivalent — **done, and it is
+       not equivalent.** This item was the load-bearing check for the whole ADR; it failed.
+4. [ ] ~~Add a GUT unit test exercising the shared function~~ — moot, no shared function
+5. [ ] ~~Regression-test VMD dance playback / VRMA import visually~~ — moot, no code changed
+
+## Outcome: the two formulas are not the same, this ADR does not proceed
+
+Action item 3 required verifying mathematical equivalence before merging. Re-deriving both
+formulas by hand (not just trusting graphify's 0.75 semantic-similarity score, which turned out
+to be surface-level pattern matching — both use quaternions named `world_rest`/`local_rest` and
+both invert something) shows they solve different problems:
+
+**`VrmaAnimationLibraryBuilder._normalize_rotation`:**
+```
+result = W · L⁻¹ · local_rot · W⁻¹
+```
+A **conjugation (similarity transform)** using two *static* rest quaternions from the *same* bone
+on the *source* VRMA rig, both precomputed once from the glTF bind pose. It re-expresses a
+keyframe's local-to-parent rotation, authored in the source rig's own rest-relative frame, as an
+equivalent value usable against a target skeleton whose rest is presumed near-identity (per VRM
+1.0's normalized T-pose guarantee). All four operands are fixed for the whole bake.
+
+**`VrmIkController._sync_bone_rotation`:**
+```
+pose_quat = P⁻¹ · R · T
+```
+A **hierarchical world-to-local extraction** — R is this bone's static rest orientation
+(skeleton-local), but P (the parent's *current, possibly IK-perturbed* pose) and T (the *live*
+IK target orientation, converted into skeleton-local space via the skeleton's *current* global
+transform) are both dynamic, recomputed every frame. There is no conjugation/sandwich structure
+here at all.
+
+Different arity (4-term conjugation vs. 3-term product), different mix of static vs. dynamic
+operands, different operation (similarity transform vs. local-from-world extraction). Substituting
+either formula for the other would silently produce wrong rotations. There is no shared function
+that serves both correctly without becoming either incorrect or a trivial `Quaternion` multiply
+wrapper that adds indirection without adding shared logic.
+
+**One narrower candidate considered and also rejected:** `VrmaAnimationLibraryBuilder._compute_world_rest_rotations`
+(accumulates `GLTFNode.rotation` up the parent chain, from import-time glTF node data) and
+`VrmIkController._bone_rest_skel_quat` (accumulates `Skeleton3D.get_bone_rest()` up the parent
+chain, from the post-import runtime skeleton) *are* the same algorithm — "walk to the root
+multiplying local rests" — applied to two different APIs. But each is ~8 lines, used in exactly
+one call site apiece, and unifying them would require a `Callable`-based generic walker (to
+abstract over `Array[GLTFNode]` vs `Skeleton3D` bone indices) that costs more complexity than the
+duplication it removes. Per the project's own "don't add abstractions beyond what the task
+requires" guidance, and the rule-of-three heuristic already invoked in this ADR's Option B
+rejection: not worth it at two call sites. Revisit only if a third accumulate-rest-up-the-chain
+implementation appears.
+
+No code was changed for this ADR. [ADR-0001](0001-extract-shared-vrm-scene-composition.md)'s
+composer extraction is unaffected — it never touched this math.
