@@ -1,7 +1,7 @@
 # ADR-0003: Fix Floor-Offset Correction Performance and Scope Leak
 
-**Status:** Proposed
-**Date:** 2026-07-13
+**Status:** Superseded — investigation found the function is dead code, see Outcome below
+**Date:** 2026-07-13 (superseded 2026-07-13)
 **Deciders:** kanimaru
 
 ## Context
@@ -73,11 +73,49 @@ which scoping option is chosen.
   applied to all animations — check with existing tests plus a manual visual check of a
   VRMA-only avatar before and after.
 
-## Action Items
+## Action Items (superseded — not executed as written)
 
-1. [ ] Move `_apply_vmd_floor_offset(anim)` outside the per-track loop in `_retarget_animation`
-       (required regardless of scoping option)
-2. [ ] Determine whether floor-offset's bone-name filter can run against VMD's pre-resolution
-       track names; if yes, implement Option B, else implement Option A
-3. [ ] Add a GUT test asserting floor-offset is NOT applied to a VRMA-sourced animation
-4. [ ] Manually verify VMD dance playback still lands feet at Y=0 after the change
+1. [x] ~~Move `_apply_vmd_floor_offset(anim)` outside the per-track loop~~ — moot, see Outcome
+2. [x] Determine whether floor-offset's bone-name filter can run against VMD's pre-resolution
+       track names — **done, and the answer makes both Option A and B moot: the filter can
+       never match anything from any current source, at any point in the pipeline.**
+3. [ ] ~~Add a GUT test asserting floor-offset is NOT applied to a VRMA-sourced animation~~ —
+       not needed; nothing applies it to anything
+4. [ ] ~~Manually verify VMD dance playback still lands feet at Y=0~~ — not applicable to this
+       change; foot grounding is handled by `VrmIkController`, unaffected by this fix
+
+## Outcome: `_apply_vmd_floor_offset` is dead code — deleted rather than relocated
+
+Action item 2 (verify the bone-name filter's timing before choosing between Option A and B)
+required checking what track types and bone names the three animation builders actually emit.
+That check shows `_apply_vmd_floor_offset` can never fire, from any source, at any point in the
+pipeline it might run in:
+
+- It filters for `Animation.TYPE_POSITION_3D` tracks on `leftFoot`/`rightFoot`/`leftUpperLeg`/
+  `rightUpperLeg`/`leftLowerLeg`/`rightLowerLeg` under a `%GeneralSkeleton:` path.
+- `VmdAnimationLibraryBuilder.build()` only emits `TYPE_POSITION_3D` tracks for `hips`,
+  `ModelRoot`, `Root`, and IK targets (`"Ik" in vrm_name`, which live under `%leftLegIk` etc. —
+  not `%GeneralSkeleton:` at all). Every other bone, including every bone in the filter's list,
+  gets a rotation-only track
+  ([vmd_animation_library_builder.gd:288-298](../../addons/vrm/vmd/vmd_animation_library_builder.gd)).
+- `VrmaAnimationLibraryBuilder` restricts position tracks to hips only, per the VRMA spec
+  ([vrma_animation_library_builder.gd:264](../../addons/vrm/vrma/vrma_animation_library_builder.gd)).
+- `BvhAnimationLibraryBuilder` emits a position track only for the BVH root bone
+  ([bvh_animation_library_builder.gd:126](../../addons/vrm/bvh/bvh_animation_library_builder.gd)).
+
+No source in this codebase has ever produced a foot-bone position track under `%GeneralSkeleton:`.
+`min_y` is always `INF`, and the function always returns immediately via its own
+`if min_y == INF: return` guard. No test exercises it either. Recent commit history (`b182e5d
+feat: fixing position of the feet`, `8581dc1 fix: foot position of VRM1 and 0 for VMD models`)
+strongly suggests this was superseded by `VrmIkController`'s live per-frame foot IK and never
+removed.
+
+Relocating dead code (Option B) or gating dead code behind a metadata tag (Option A) both still
+leave it dead — there's nothing to relocate or gate that does anything. The correct fix is
+deletion, which also resolves the O(n²) loop placement and the scope-leak concerns at their root
+(no function, no misplaced call, no leaking setting).
+
+**Implemented:** removed `_apply_vmd_floor_offset`, its call site, and the
+`vrm_fix_vmd_floor_offset` `ProjectSettings` check from `vrm_animation_retargeter.gd`. Verified
+with the full GUT suite. `VrmIkController`'s foot placement is unrelated to this code path and is
+unaffected.
