@@ -11,6 +11,11 @@ const MTOON_SHADER_PATH: String = "res://addons/vrm/shaders/mtoon.gdshader"
 const MTOON_OUTLINE_SHADER_PATH: String = "res://addons/vrm/shaders/mtoon_outline.gdshader"
 const MODEL_ROOT_VRM_NAME: String = "ModelRoot"
 
+const VmdParser = preload("res://addons/vrm/vmd/vmd_parser.gd")
+const VmdFormat = preload("res://addons/vrm/vmd/vmd_format.gd")
+const VmdLoader = preload("res://addons/vrm/vmd/vmd_loader.gd")
+const VmdDebugSkeleton = preload("res://addons/vrm/vmd/vmd_debug_skeleton.gd")
+
 const VRM1_TO_VRM0_EXPRESSIONS: Dictionary[String, String] = {
 	"happy": "joy",
 	"sad": "sorrow",
@@ -32,6 +37,7 @@ var _mtoon_outline_materials: Dictionary[ShaderMaterial, ShaderMaterial] = {}
 @onready var _model_anchor: Node3D = $ModelAnchor
 
 var _is_animation_paused: bool = false
+var _is_updating_slider: bool = false
 
 var _vmd_motion_path: String = ""
 var _vmd_camera_path: String = ""
@@ -74,6 +80,7 @@ func _ready() -> void:
 	_ui.file_dialog.file_selected.connect(_on_file_dialog_file_selected)
 	_ui.stop_button.pressed.connect(_on_stop_animation_pressed)
 	_ui.pause_button.pressed.connect(_on_pause_animation_pressed)
+	_ui.slider.value_changed.connect(_on_slider_value_changed)
 
 	# Connect modular VMD tab
 	_ui.setup_tabs()
@@ -115,10 +122,26 @@ func _process(_delta: float) -> void:
 	var player: AnimationPlayer = VRMUtil.find_animation_player(_current_model)
 	if not player: return
 
-	if (player.is_playing() or _is_animation_paused) and player.current_animation != "":
+	var has_anim: bool = player.current_animation != ""
+	if _ui.slider.editable != has_anim:
+		_ui.slider.editable = has_anim
+
+	if (player.is_playing() or _is_animation_paused) and has_anim:
 		var current_time: float = player.current_animation_position
 		var frame: int = int(current_time * 30.0)
-		_ui.frame_label.text = "Frame: %d" % frame
+
+		var anim: Animation = player.get_animation(player.current_animation)
+		var max_frames: int = 0
+		if anim:
+			max_frames = int(anim.length * 30.0)
+			if _ui.slider.max_value != max_frames:
+				_ui.slider.max_value = max_frames
+
+		_ui.frame_label.text = "Frame: %d / %d" % [frame, max_frames]
+
+		_is_updating_slider = true
+		_ui.slider.value = frame
+		_is_updating_slider = false
 
 		# Sync debug skeleton
 		if _debug_skeleton and _debug_skeleton.has_node("DebugPlayer"):
@@ -187,7 +210,7 @@ func _on_dance_folder_selected(folder_path: String) -> void:
 	var camera_vmd: String = ""
 
 	for vmd_path: String in vmd_files:
-		var data: VmdParser.VmdData = VmdParser.parse_file(vmd_path)
+		var data: VmdFormat.VmdData = VmdParser.parse_file(vmd_path)
 		if data:
 			if data.camera_frames.size() > 0:
 				camera_vmd = vmd_path
@@ -223,7 +246,7 @@ func _on_debug_skeleton_pressed() -> void:
 
 	_ui.status_label.text = "Parsing VMD for debug skeleton..."
 
-	var vmd_data: VmdParser.VmdData = VmdParser.parse_file(_vmd_motion_path)
+	var vmd_data: VmdFormat.VmdData = VmdParser.parse_file(_vmd_motion_path)
 	if vmd_data == null:
 		_ui.status_label.text = "Error: Failed to parse VMD."
 		return
@@ -616,6 +639,14 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd:
 	for i: int in range(skeleton.get_bone_count()):
 		world_rests[i] = _compute_bone_world_rest(skeleton, i, skeleton_rot)
 
+	var position_scale: float = 0.08
+	if is_vmd:
+		var head_name: String = VRMUtil.find_bone(skeleton, model, "head")
+		var head_idx: int = skeleton.find_bone(head_name)
+		if head_idx != -1:
+			var head_height: float = skeleton.get_bone_global_rest(head_idx).origin.y
+			position_scale = head_height / 15.8
+
 	# Resolve standard bone names to model's skeleton bone names for kinematics
 	var hips_resolved_name: String = VRMUtil.find_bone(skeleton, model, "hips")
 	var left_up_leg_name: String = VRMUtil.find_bone(skeleton, model, "leftUpperLeg")
@@ -642,6 +673,12 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd:
 
 	for anim_name: StringName in library.get_animation_list():
 		var anim: Animation = library.get_animation(anim_name)
+
+		var hips_pos_key0 := Vector3.ZERO
+		if is_vmd:
+			var raw_hips_track := anim.find_track(NodePath("%GeneralSkeleton:hips"), Animation.TYPE_POSITION_3D)
+			if raw_hips_track >= 0 and anim.track_get_key_count(raw_hips_track) > 0:
+				hips_pos_key0 = anim.track_get_key_value(raw_hips_track, 0)
 
 		# Pass 1: Rename and retarget all rotation tracks first
 		for i: int in range(anim.get_track_count()):
@@ -845,8 +882,19 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd:
 						for k: int in range(anim.track_get_key_count(i)):
 							var pos: Vector3 = anim.track_get_key_value(i, k)
 							var final_pos: Vector3 = local_rest
-							if is_root or is_ik:
+							if is_root:
 								final_pos += pos
+							elif is_ik:
+								if is_vmd:
+									var is_left := "left" in path_str
+									var mmd_rest_units := Vector3(-1.83, 0.0, 0.0) if is_left else Vector3(1.83, 0.0, 0.0)
+									var mmd_rest_godot := mmd_rest_units * position_scale
+									var horizontal_offset := Vector3(hips_pos_key0.x, 0.0, hips_pos_key0.z)
+									var delta := (pos - horizontal_offset) - mmd_rest_godot
+									var rotated_delta := skeleton_rot * delta
+									final_pos = local_rest + rotated_delta
+								else:
+									final_pos += pos
 							else:
 								var godot_delta := Vector3(pos.x, pos.y, -pos.z)
 								if not is_vmd:
@@ -886,6 +934,12 @@ func _on_stop_animation_pressed() -> void:
 	if _audio_player.is_playing():
 		_audio_player.stop()
 	_ui.frame_label.text = "Frame: 0"
+
+	_is_updating_slider = true
+	_ui.slider.value = 0
+	_ui.slider.editable = false
+	_is_updating_slider = false
+
 	# Reset root motion state and position
 	_vmd_root_motion_active = false
 	_vmd_player = null
@@ -929,6 +983,25 @@ func _on_pause_animation_pressed() -> void:
 func _sync_pause_buttons(is_paused: bool) -> void:
 	var text: String = "▶ Resume Animation" if is_paused else "⏸ Pause Animation"
 	_ui.pause_button.text = text
+
+
+func _on_slider_value_changed(value: float) -> void:
+	if _is_updating_slider:
+		return
+
+	if not _current_model:
+		return
+	var player: AnimationPlayer = VRMUtil.find_animation_player(_current_model)
+	if not player or player.current_animation == "":
+		return
+
+	var new_time: float = value / 30.0
+	player.seek(new_time, true)
+
+	if _audio_player.is_playing() or _audio_player.stream_paused or _audio_player.stream != null:
+		_audio_player.stop()
+		_audio_player.stream = null
+		_ui.status_label.text = "Music stopped due to scrubbing."
 
 
 func _add_to_recents(path: String) -> void:

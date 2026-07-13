@@ -17,6 +17,7 @@ class_name VrmRuntimeUI
 @onready var playback_controls: VBoxContainer = %PlaybackControls
 @onready var stop_button: Button = %StopBtn
 @onready var pause_button: Button = %PauseBtn
+@onready var slider: HSlider = %FrameSlider
 
 var tab_container: TabContainer
 var anim_list: VBoxContainer
