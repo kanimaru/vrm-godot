@@ -1,6 +1,6 @@
 # ADR-0006: Remove Dead VRM0 Blend Shape Bind Classes
 
-**Status:** Proposed
+**Status:** Implemented
 **Date:** 2026-07-13
 **Deciders:** kanimaru
 
@@ -50,6 +50,39 @@ not a separate option to pursue.
 Option A, after the Option C sanity check confirms these were never wired up as a recent
 regression.
 
+## Verification against the VRM spec (Option C, done properly)
+
+Before deleting, checked whether the dead classes might encode a deliberate VRM0-specific design
+the currently-active code silently drops. They don't — the opposite is true:
+
+- `RuntimeBlendShapeBind` has exactly three fields: `mesh_path`, `shape_index`, `weight`. No
+  concept of material binds at all.
+- The VRM 0.0 spec's `vrm.blendshape.group.schema.json` defines a blend shape group as `binds`
+  (morph targets) **and** `materialValues` (material color/UV animation via
+  `vrm.blendshape.materialbind.schema.json`: `materialName`/`propertyName`/`targetValue`). VRM0
+  legitimately uses both.
+- The **active** `Vrm0ExpressionController.compile_vrm0_binds` handles both: morph binds via the
+  shared `RuntimeMorphBind`, and material binds via `RuntimeMaterialColorBind`/
+  `RuntimeTextureTransformBind` (see `_resolve_vrm0_material_property`, which maps VRM0's Unity
+  shader property names — `_Color`, `_EmissionColor`, `_ShadeColor`, `_OutlineColor`,
+  `_MainTex_ST` — onto Godot MToon property equivalents). The dead classes could never have
+  supported this; they have no fields for it.
+- Weight units also differ by generation and are already handled correctly in the active path:
+  VRM 0.0's `vrm.blendshape.bind.weight` is documented `0–100`
+  (`SkinnedMeshRenderer.SetBlendShapeWeight`, Unity's percentage convention), while VRM 1.0's
+  `VRMC_vrm.expressions.expression.morphTargetBind.weight` is a plain unitless number (0–1
+  convention). `compile_vrm0_binds` does `blend_shape_bind.weight / 100.0` when building the
+  shared `RuntimeMorphBind`, correctly normalizing VRM0's percentage into the 0–1 scale the
+  shared runtime type (and Godot's blend shapes) expect. The dead classes have no such
+  conversion anywhere.
+- `git log --follow` on both files shows a single commit each: `b345ee5 feat: implement VRM 1.0
+  expression and runtime systems with initial asset support` — i.e. an early VRM0 stub written
+  during the initial VRM1 buildout, never touched again. Not a recent regression.
+
+Conclusion: no hidden design to preserve. The dead classes are a strictly less-complete earlier
+attempt (morph-only, wrong weight units for standalone use) superseded by the current
+shared-class implementation, which correctly covers everything the VRM0 spec requires.
+
 ## Consequences
 
 - Easier: one less unused, confusing parallel abstraction near the actively-used runtime bind
@@ -58,9 +91,10 @@ regression.
 
 ## Action Items
 
-1. [ ] Confirm via `git log`/`git blame` these were never wired up (not a recent regression that
-       needs fixing forward instead of deleting)
-2. [ ] Delete `vrm0_runtime_blend_shape_bind.gd` and `vrm0_runtime_blend_shape_binds.gd`
+1. [x] Confirm via `git log`/`git blame` these were never wired up (not a recent regression that
+       needs fixing forward instead of deleting) — confirmed, single-commit origin, never
+       referenced since
+2. [x] Delete `vrm0_runtime_blend_shape_bind.gd` and `vrm0_runtime_blend_shape_binds.gd`
        (+ their `.uid` files)
-3. [ ] Re-run the GUT suite to confirm nothing depended on their mere presence (e.g. `class_name`
-       registration side effects)
+3. [x] Re-run the GUT suite to confirm nothing depended on their mere presence (e.g. `class_name`
+       registration side effects) — 173/173 passed, unchanged from before deletion
