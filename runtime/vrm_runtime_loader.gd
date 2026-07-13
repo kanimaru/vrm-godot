@@ -558,19 +558,16 @@ func _on_animation_selected(path: String) -> void:
 	if path.ends_with(".vrma"):
 		library = VrmaLoader.load_animation_library(path)
 	else:
-		var scale_factor: float = 0.01
+		var target_hips_height: float = -1.0
 		var skeleton: Skeleton3D = VRMUtil.find_skeleton(_current_model)
 		if skeleton:
 			var hips_resolved_name: String = VRMUtil.find_bone(skeleton, _current_model, "hips")
 			var hips_idx: int = skeleton.find_bone(hips_resolved_name)
 			if hips_idx >= 0:
-				var target_hips_height: float = _compute_bone_world_rest(skeleton, hips_idx, Quaternion.IDENTITY).origin.y
-				var bvh_data: BvhParser.BvhData = BvhParser.parse_file(path)
-				if bvh_data and bvh_data.root:
-					var bvh_hips_height: float = bvh_data.root.offset.y
-					if absf(bvh_hips_height) > 0.001:
-						scale_factor = target_hips_height / bvh_hips_height
-		library = BvhLoader.load_animation_library(path, 30.0, scale_factor)
+				target_hips_height = _compute_bone_world_rest(skeleton, hips_idx, Quaternion.IDENTITY).origin.y
+		library = BvhLoader.load_animation_library(
+			path, 30.0, 0.01, BvhAnimationLibraryBuilder.PRESET_RAW, target_hips_height
+		)
 	if not library:
 		return
 	var local_library: AnimationLibrary = library.duplicate(true)
