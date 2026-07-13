@@ -1,7 +1,7 @@
 @tool
 class_name VrmIkController
 extends Node
-const VRMUtil = preload("../common/vrm_util.gd")
+const VRMUtil = preload("vrm_util.gd")
 
 ## Manages runtime IK for VRM models, specifically for VMD leg movement.
 ## It creates virtual target nodes and configures SkeletonIK3D for the legs.

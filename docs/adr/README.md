@@ -9,8 +9,8 @@ knowledge graph and direct source verification.
 | [0002](0002-unify-rest-pose-retargeting-math.md) | Unify Rest-Pose Retargeting Math | Duplicate quaternion retargeting formula | **Superseded** — hand-verification showed the two formulas aren't actually equivalent; no code changed |
 | [0003](0003-fix-floor-offset-perf-and-scope-leak.md) | Fix Floor-Offset Correction Performance and Scope Leak | Bug: O(n²) loop + VMD fix leaking into VRMA/BVH | **Superseded** — the function turned out to be dead code (never matched any track from any source); deleted instead of relocated |
 | [0004](0004-eliminate-redundant-bvh-parsing.md) | Eliminate Redundant BVH Parsing in Runtime Loader | Bug: double file parse per BVH selection | Implemented |
-| [0005](0005-promote-vrm-ik-controller.md) | Promote VrmIkController into the Addon's Public Surface | Feature stranded in demo-only code | Proposed |
+| [0005](0005-promote-vrm-ik-controller.md) | Promote VrmIkController into the Addon's Public Surface | Feature stranded in demo-only code | **Implemented, mechanism changed** — relocated to `common/`; the proposed import-plugin auto-attach option was architecturally impossible (import plugins never have a skeleton/scene to attach to), so it's opt-in via direct instantiation instead |
 | [0006](0006-remove-dead-vrm0-blend-shape-bind-classes.md) | Remove Dead VRM0 Blend Shape Bind Classes | Dead code cleanup | Implemented |
 | [0007](0007-consolidate-cross-generation-runtime-types.md) | Consolidate Cross-Generation Runtime Types and Expression Name Mapping | Layering + duplicate constant tables | Proposed |
 
-Suggested order if implementing the rest: 0007 → 0005. 0002, 0003, and 0006 are closed.
+Suggested order if implementing the rest: 0007 is the only one left. 0002, 0003, 0005, and 0006 are closed.

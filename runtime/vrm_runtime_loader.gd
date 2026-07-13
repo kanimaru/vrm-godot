@@ -410,7 +410,7 @@ func load_vrm(path: String) -> void:
 	# Setup IK
 	var skeleton: Skeleton3D = VRMUtil.find_skeleton(_current_model)
 	if skeleton:
-		var ik_controller: Node = load("res://addons/vrm/vmd/vrm_ik_controller.gd").new()
+		var ik_controller: Node = load("res://addons/vrm/common/vrm_ik_controller.gd").new()
 		ik_controller.name = "VrmIkController"
 		_current_model.add_child(ik_controller)
 		var m_root: Node = get_node("%ModelRoot")

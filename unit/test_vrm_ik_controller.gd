@@ -1,6 +1,6 @@
 extends GutTest
 
-const VrmIkController = preload("res://addons/vrm/vmd/vrm_ik_controller.gd")
+const VrmIkController = preload("res://addons/vrm/common/vrm_ik_controller.gd")
 
 
 func test_foot_rotation_sync_vrm1() -> void:
