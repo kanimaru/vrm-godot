@@ -1,6 +1,7 @@
 extends GutTest
 
 const VmdParser = preload("res://addons/vrm/vmd/vmd_parser.gd")
+const VmdFormat = preload("res://addons/vrm/vmd/vmd_format.gd")
 const VmdAnimationLibraryBuilder = preload("res://addons/vrm/vmd/vmd_animation_library_builder.gd")
 const VmdLoader = preload("res://addons/vrm/vmd/vmd_loader.gd")
 
@@ -59,8 +60,8 @@ func test_vmd_parser_with_mock_data():
 	assert_eq(data.bone_frames[0].position, Vector3(1, 2, -3), "Position should match")
 
 func test_vmd_builder():
-	var data := VmdParser.VmdData.new()
-	var bf := VmdParser.VmdBoneFrame.new()
+	var data := VmdFormat.VmdData.new()
+	var bf := VmdFormat.VmdBoneFrame.new()
 	bf.name = "センター"
 	bf.frame = 30
 	bf.position = Vector3(1, 1, 1)
