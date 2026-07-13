@@ -8,6 +8,7 @@ class_name Vrm0Extension
 const m_bind_script = preload("structures/vrm0_material_bind.gd")
 const VrmMtoonBuilder = preload("../common/vrm_mtoon_builder.gd")
 const VRMUtil = preload("../common/vrm_util.gd")
+const VrmSceneComposer = preload("../common/vrm_scene_composer.gd")
 
 
 func _get_supported_extensions() -> PackedStringArray:
@@ -210,9 +211,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	VRMUtil.set_vrm0_data(root, vrm_top_level)
 
 	var skeleton: Skeleton3D = VRMUtil.find_skeleton(root)
-	if skeleton != null:
-		skeleton.name = &"GeneralSkeleton"
-		skeleton.unique_name_in_owner = true
+	VrmSceneComposer.rename_skeleton_to_general(skeleton)
 
 	# Store a vrm_role -> actual_bone_name lookup on the root so VrmaAnimationLibraryBuilder
 	# can retarget animations to this avatar's real bone names at import/runtime.
@@ -222,43 +221,17 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		for bone_data: Vrm0Humanoid.Bone in vrm_top_level.humanoid.human_bones:
 			if bone_data.node < 0 or bone_data.node >= gltf_nodes.size():
 				continue
-			var gnode: GLTFNode = gltf_nodes[bone_data.node]
-			var bone_name: String = gnode.original_name
-			if bone_name.is_empty():
-				bone_name = gnode.resource_name
+			var bone_name: String = VrmSceneComposer.resolve_node_name(gltf_nodes[bone_data.node])
 			humanoid_bone_map[bone_data.bone.to_lower()] = bone_name
 		VRMUtil.set_humanoid_bone_map(root, humanoid_bone_map)
 
-	var retargeter_script := load("res://addons/vrm/common/vrm_animation_retargeter.gd")
-	if retargeter_script != null:
-		var retargeter: Node = Node.new()
-		retargeter.set_script(retargeter_script)
-		retargeter.name = &"VrmAnimationRetargeter"
-
-		# Find the animation player to link it
-		var anim_player: AnimationMixer = VRMUtil.find_animation_player(root)
-
-		if anim_player != null:
-			retargeter.animation_player = anim_player
-
-		root.add_child(retargeter, true)
-		retargeter.owner = root
+	VrmSceneComposer.attach_retargeter(root)
 
 	if skeleton != null and vrm_top_level.secondary_animation != null:
-		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
-		var node_names: Dictionary[int, String] = {}
-		for i: int in range(gltf_nodes.size()):
-			var gnode: GLTFNode = gltf_nodes[i]
-			if gnode != null:
-				var node_name: String = gnode.original_name
-				if node_name.is_empty():
-					node_name = gnode.resource_name
-				node_names[i] = node_name
-
 		var spring_sim: Vrm0SpringBoneSimulator = Vrm0SpringBoneSimulator.new()
 		spring_sim.name = &"Vrm0SpringBoneSimulator"
 		spring_sim.secondary_animation = vrm_top_level.secondary_animation
-		spring_sim.gltf_node_names = node_names
+		spring_sim.gltf_node_names = VrmSceneComposer.resolve_all_node_names(state)
 
 		skeleton.add_child(spring_sim, true)
 		spring_sim.owner = root
@@ -271,45 +244,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		expr_controller.owner = root
 		expr_controller.compile_vrm0_binds(vrm_top_level.blend_shape_master, state, root)
 
-	# --- MToon Material Replacement ---
-	var mtoon_configs: Variant = state.get_additional_data(&"vrm0_mtoon")
-	if mtoon_configs is Array:
-		var gltf_materials: Array = state.get_materials()
-
-		# Build a name -> ShaderMaterial map for scene-tree lookup.
-		# The surface material resource_name on baked ArrayMesh surfaces matches
-		# the resource_name of the corresponding glTF material.
-		var name_to_shader: Dictionary[String, ShaderMaterial] = {}
-		var active_mtoons: Array[Material] = []
-		for mat_idx: int in range(mtoon_configs.size()):
-			var params: Variant = mtoon_configs[mat_idx]
-			if not (params is Dictionary):
-				continue
-
-			var body_mat: ShaderMaterial = VrmMtoonBuilder.build_body(params)
-			var outline_mat: ShaderMaterial = VrmMtoonBuilder.build_outline(params)
-			if outline_mat != null:
-				body_mat.next_pass = outline_mat
-
-			# Map by glTF material name so the scene-tree walker can look it up.
-			var gltf_mat: Material = gltf_materials[mat_idx] as Material if mat_idx < gltf_materials.size() else null
-			if gltf_mat != null and not gltf_mat.resource_name.is_empty():
-				name_to_shader[gltf_mat.resource_name] = body_mat
-			
-			active_mtoons.append(body_mat)
-			if outline_mat != null:
-				active_mtoons.append(outline_mat)
-
-		if not name_to_shader.is_empty():
-			_apply_materials_to_scene_tree(root, name_to_shader)
-
-			var mtoon_controller_script := load("res://addons/Godot-MToon-Shader/mtoon_controller.gd")
-			if mtoon_controller_script != null:
-				var controller: Node = mtoon_controller_script.new()
-				controller.name = "MtoonController"
-				controller.set("mtoon_materials", active_mtoons)
-				root.add_child(controller, true)
-				controller.owner = root
+	VrmSceneComposer.apply_mtoon_materials(root, state.get_additional_data(&"vrm0_mtoon"), state)
 
 	return OK
 
@@ -431,39 +366,3 @@ func _resolve_vrm0_texture(tex_index_val: Variant, state: GLTFState) -> Texture2
 		return null
 
 	return images[tex_index]
-
-
-# ---------------------------------------------------------------------------
-# Scene Tree Material Replacement
-# ---------------------------------------------------------------------------
-
-## Recursively walks the scene tree from root.
-## During _import_post, nodes are ImporterMeshInstance3D with an ImporterMesh.
-## ImporterMesh uses get_surface_material() / set_surface_material(), which
-## bakes the replacement directly into the final ArrayMesh.
-func _apply_materials_to_scene_tree(
-		node: Node,
-		name_to_shader: Dictionary[String, ShaderMaterial],
-) -> void:
-	if node is ImporterMeshInstance3D:
-		var importer_inst: ImporterMeshInstance3D = node as ImporterMeshInstance3D
-		var importer_mesh: ImporterMesh = importer_inst.mesh
-		if importer_mesh != null:
-			for i: int in range(importer_mesh.get_surface_count()):
-				var surf_mat: Material = importer_mesh.get_surface_material(i)
-				if surf_mat == null or surf_mat.resource_name.is_empty():
-					continue
-				if name_to_shader.has(surf_mat.resource_name):
-					importer_mesh.set_surface_material(i, name_to_shader[surf_mat.resource_name])
-	elif node is MeshInstance3D:
-		var mesh_inst: MeshInstance3D = node as MeshInstance3D
-		if mesh_inst.mesh != null:
-			for i: int in range(mesh_inst.mesh.get_surface_count()):
-				var surf_mat: Material = mesh_inst.mesh.surface_get_material(i)
-				if surf_mat == null or surf_mat.resource_name.is_empty():
-					continue
-				if name_to_shader.has(surf_mat.resource_name):
-					mesh_inst.set_surface_override_material(i, name_to_shader[surf_mat.resource_name])
-
-	for child: Node in node.get_children():
-		_apply_materials_to_scene_tree(child, name_to_shader)
