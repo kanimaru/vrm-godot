@@ -7,26 +7,6 @@ const VRMUtil = preload("../common/vrm_util.gd")
 ## Bone rotations are normalized from the VRMA's own T-pose rest rotations so they can
 ## be applied to any VRM avatar with zero or near-zero rest rotations.
 
-# No longer using a hardcoded map. We use the VRM role names (camelCase) directly.
-
-# VRM expression preset (camelCase) -> Vrm1ExpressionController property (snake_case)
-const EXPRESSION_NAME_MAP: Dictionary = {
-	"happy": "happy",
-	"angry": "angry",
-	"sad": "sad",
-	"relaxed": "relaxed",
-	"surprised": "surprised",
-	"aa": "aa",
-	"ih": "ih",
-	"ou": "ou",
-	"ee": "ee",
-	"oh": "oh",
-	"blink": "blink",
-	"blinkLeft": "blink_left",
-	"blinkRight": "blink_right",
-	"neutral": "neutral",
-}
-
 # These bones are excluded from animation per spec — handled by LookAt instead.
 const EXCLUDED_BONES: PackedStringArray = ["leftEye", "rightEye"]
 
@@ -100,7 +80,10 @@ static func _build_role_map(vrma: VrmaTopLevel) -> Dictionary:
 			map[node_idx] = {
 				"type": "expression",
 				"vrm_name": expr_name,
-				"prop": EXPRESSION_NAME_MAP.get(expr_name, expr_name),
+				# Preset keys are camelCase (e.g. "blinkLeft"); Vrm1ExpressionController's
+				# exported properties are snake_case ("blink_left"). to_snake_case() covers
+				# every preset name without needing a hand-maintained lookup table.
+				"prop": expr_name.to_snake_case(),
 			}
 
 		for expr_name: String in vrma.expressions.custom:

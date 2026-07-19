@@ -2,8 +2,18 @@
 extends Node3D
 class_name Vrm0ExpressionController
 
+## Uses the shared runtime expression/bind classes from common/ — these are
+## generation-agnostic, not VRM1-specific, despite the historical "Vrm1" naming
+## on some of the older call sites.
+const RuntimeExpression = preload("uid://bkxff7fck6odq")  # res://addons/vrm/common/vrm_runtime_expression.gd
+const RuntimeMorphBind = preload("uid://dl3c1d3rmg7ee")  # res://addons/vrm/common/vrm_runtime_morph_bind.gd
+const RuntimeMaterialColorBind = preload("uid://blksmb8nanc73")  # res://addons/vrm/common/vrm_runtime_material_color_bind.gd
+const RuntimeTextureTransformBind = preload("uid://bdnn31bxcq3fh")  # res://addons/vrm/common/vrm_runtime_texture_transform_bind.gd
+const RuntimeNodeMorphState = preload("uid://n3jfgxag1ls3")  # res://addons/vrm/common/vrm_runtime_node_morph_state.gd
+const RuntimeMaterialColorState = preload("uid://628n3sjhgv68")  # res://addons/vrm/common/vrm_runtime_material_color_state.gd
+const RuntimeMaterialUVState = preload("uid://qt3oul1g0kj3")  # res://addons/vrm/common/vrm_runtime_material_uv_state.gd
 
-## Uses the shared RuntimeExpression class from VRM1 runtime.
+
 var _binds: Dictionary[String, RuntimeExpression] = {}
 var expressions: Array[String]: 
 	get():

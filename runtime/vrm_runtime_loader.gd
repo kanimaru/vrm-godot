@@ -15,17 +15,7 @@ const VmdParser = preload("res://addons/vrm/vmd/vmd_parser.gd")
 const VmdFormat = preload("res://addons/vrm/vmd/vmd_format.gd")
 const VmdLoader = preload("res://addons/vrm/vmd/vmd_loader.gd")
 const VmdDebugSkeleton = preload("res://addons/vrm/vmd/vmd_debug_skeleton.gd")
-
-const VRM1_TO_VRM0_EXPRESSIONS: Dictionary[String, String] = {
-	"happy": "joy",
-	"sad": "sorrow",
-	"relaxed": "fun",
-	"aa": "a",
-	"ih": "i",
-	"ou": "u",
-	"ee": "e",
-	"oh": "o",
-}
+const VrmConstants = preload("uid://xyiuw84wqa8w")  # res://addons/vrm/common/vrm_constants.gd
 
 var _recents: Array[String] = []
 var _current_model: Node = null
@@ -685,7 +675,7 @@ func _retarget_library_for_model(library: AnimationLibrary, model: Node, is_vmd:
 			var path_str: String = str(anim.track_get_path(i))
 			if "Vrm1ExpressionController:" in path_str and is_vrm0:
 				var prop_name: String = path_str.split(":")[1]
-				var target_prop: String = VRM1_TO_VRM0_EXPRESSIONS.get(prop_name, prop_name)
+				var target_prop: String = VrmConstants.EXPRESSION_VRM1_TO_VRM0.get(prop_name, prop_name)
 				anim.track_set_path(i, NodePath("%Vrm0ExpressionController:"+ target_prop))
 				continue
 
