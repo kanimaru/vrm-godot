@@ -432,6 +432,11 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		skeleton.add_child(constraint_sim, true)
 		constraint_sim.owner = root
 
+	# MToon materials must be swapped in before expression binds are compiled - material
+	# color/UV binds resolve their target by walking the live scene tree, and need to find
+	# the actual MToon ShaderMaterial rather than the pre-swap glTF-imported one.
+	VrmSceneComposer.apply_mtoon_materials(root, state.get_additional_data("vrm1_mtoon"), state)
+
 	var expr_controller: Vrm1ExpressionController = null
 	if vrm_top_level.expressions != null:
 		expr_controller = Vrm1ExpressionController.new()
@@ -450,8 +455,6 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			root.add_child(look_at_controller, true)
 			look_at_controller.owner = root
 			look_at_controller.setup(vrm_top_level.look_at, skeleton, expr_controller)
-
-	VrmSceneComposer.apply_mtoon_materials(root, state.get_additional_data("vrm1_mtoon"), state)
 
 	return OK
 

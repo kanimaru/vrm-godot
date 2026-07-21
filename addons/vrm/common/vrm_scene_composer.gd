@@ -93,6 +93,12 @@ static func apply_mtoon_materials(root: Node, mtoon_configs: Variant, state: GLT
 		var gltf_mat: Material = gltf_materials[mat_idx] as Material if mat_idx < gltf_materials.size() else null
 		if gltf_mat != null and not gltf_mat.resource_name.is_empty():
 			name_to_shader[gltf_mat.resource_name] = body_mat
+			# Carry the name forward onto the swapped-in material too - expression
+			# controllers resolve their material binds by this name post-swap, and
+			# VrmMtoonBuilder itself has no notion of the original glTF material name.
+			body_mat.resource_name = gltf_mat.resource_name
+			if outline_mat != null:
+				outline_mat.resource_name = gltf_mat.resource_name
 
 		active_mtoons.append(body_mat)
 		if outline_mat != null:
@@ -110,6 +116,22 @@ static func apply_mtoon_materials(root: Node, mtoon_configs: Variant, state: GLT
 		controller.set("mtoon_materials", active_mtoons)
 		root.add_child(controller, true)
 		controller.owner = root
+
+
+## Finds the live Material with the given resource_name among root's MeshInstance3D surface
+## materials. Expression controllers use this to resolve a VRM material bind's target to
+## whatever material is ACTUALLY rendering at bind-compile time - critical for a bind to end up
+## on the swapped-in MToon ShaderMaterial rather than a pre-swap material that's no longer part
+## of the scene. Callers must run this after apply_mtoon_materials, not before.
+static func find_material_by_name(root: Node, material_name: String) -> Material:
+	if material_name.is_empty():
+		return null
+	for mesh_inst: MeshInstance3D in root.find_children("", "MeshInstance3D", true, false):
+		for idx: int in range(mesh_inst.get_surface_override_material_count()):
+			var mat: Material = mesh_inst.get_active_material(idx)
+			if mat != null and mat.resource_name == material_name:
+				return mat
+	return null
 
 
 ## Recursively walks the scene tree from root, swapping in MToon materials by matching

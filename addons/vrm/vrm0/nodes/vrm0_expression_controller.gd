@@ -114,22 +114,21 @@ func _apply_expressions() -> void:
 		var node: Node = get_node_or_null(mat_path)
 		if node and node is MeshInstance3D:
 			for surface_idx: int in range(node.get_surface_override_material_count()):
-				var mat: StandardMaterial3D = node.get_surface_override_material(surface_idx)
+				var mat: Material = node.get_surface_override_material(surface_idx)
 				if mat:
 					var base_state: RuntimeMaterialColorState = _base_material_colors[mat_path]
 					for prop in base_state.properties:
-						mat.set(prop, base_state.properties[prop])
+						_set_material_color(mat, prop, base_state.properties[prop])
 
 	# Reset material UVs to base state
 	for mat_path: NodePath in _base_material_uvs:
 		var node: Node = get_node_or_null(mat_path)
 		if node and node is MeshInstance3D:
 			for surface_idx: int in range(node.get_surface_override_material_count()):
-				var mat: StandardMaterial3D = node.get_surface_override_material(surface_idx)
+				var mat: Material = node.get_surface_override_material(surface_idx)
 				if mat:
 					var base_state: RuntimeMaterialUVState = _base_material_uvs[mat_path]
-					mat.set("uv1_scale", base_state.scale)
-					mat.set("uv1_offset", base_state.offset)
+					_set_material_uv(mat, base_state.scale, base_state.offset)
 
 	# Accumulate and apply all active expressions
 	for expr_key in _binds:
@@ -156,15 +155,12 @@ func _apply_expressions() -> void:
 		# Material color binds (uses RuntimeMaterialColorBind fields: material, prop, color)
 		for material_color_bind: RuntimeMaterialColorBind in expression.color_binds:
 			if material_color_bind.material:
-				var base_col: Color = Color.WHITE
-				# Look up the base color via stored path info
-				material_color_bind.material.set(material_color_bind.prop, material_color_bind.color * val)
+				_set_material_color(material_color_bind.material, material_color_bind.prop, material_color_bind.color * val)
 
 		# Texture transform binds (uses RuntimeTextureTransformBind fields: material, scale, offset)
 		for texture_transform_bind: RuntimeTextureTransformBind in expression.uv_binds:
 			if texture_transform_bind.material:
-				texture_transform_bind.material.set("uv1_scale", texture_transform_bind.scale * val)
-				texture_transform_bind.material.set("uv1_offset", texture_transform_bind.offset * val)
+				_set_material_uv(texture_transform_bind.material, texture_transform_bind.scale * val, texture_transform_bind.offset * val)
 
 
 func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFState, root_node: Node) -> void:
@@ -242,9 +238,13 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 				continue
 
 			if prop_info.type == "color" and material_bind.target_value.size() >= 4:
+				var resolved_prop: String = _material_prop_for(prop_info, mat)
+				if resolved_prop.is_empty():
+					continue
+
 				var mcb := RuntimeMaterialColorBind.new()
 				mcb.material = mat
-				mcb.prop = prop_info.property
+				mcb.prop = resolved_prop
 				mcb.color = Color(material_bind.target_value[0], material_bind.target_value[1], material_bind.target_value[2], material_bind.target_value[3])
 				expression.color_binds.append(mcb)
 
@@ -253,8 +253,8 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 				if not _base_material_colors.has(mat_path):
 					_base_material_colors[mat_path] = RuntimeMaterialColorState.new()
 				var base_state := _base_material_colors[mat_path]
-				if not base_state.properties.has(prop_info.property):
-					base_state.properties[prop_info.property] = mat.get(prop_info.property)
+				if not base_state.properties.has(resolved_prop):
+					base_state.properties[resolved_prop] = _get_material_color(mat, resolved_prop)
 
 			elif prop_info.type == "uv" and material_bind.target_value.size() >= 4:
 				var texture_transform_bind := RuntimeTextureTransformBind.new()
@@ -266,24 +266,77 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 				# Capture base state
 				var mat_path: NodePath = NodePath("../" + _get_path_from_root(target_mesh, root_node))
 				if not _base_material_uvs.has(mat_path):
-					var base_state := RuntimeMaterialUVState.new()
-					base_state.scale = mat.get("uv1_scale")
-					base_state.offset = mat.get("uv1_offset")
-					_base_material_uvs[mat_path] = base_state
+					_base_material_uvs[mat_path] = _get_material_uv(mat)
 
 		_binds[expression_key] = expression
 
 
+## Resolves a VRM0 material bind's propertyName to both the BaseMaterial3D-native property
+## (used when a material fell back to a plain glTF PBR material with no MToon extension) and
+## the real MToon shader uniform name (used for the ShaderMaterial VrmMtoonBuilder normally
+## produces). shade/rim/matcap/outline have no BaseMaterial3D equivalent, so std_property is
+## left empty for those - _material_prop_for() treats that as "unsupported for this material".
 func _resolve_vrm0_material_property(vrm0_prop: String) -> Dictionary:
 	match vrm0_prop:
-		"_Color": return {"type": "color", "property": "albedo_color"}
-		"_EmissionColor": return {"type": "color", "property": "emission"}
-		"_ShadeColor", "_ShadedColor": return {"type": "color", "property": "shade_color"}
-		"_OutlineColor": return {"type": "color", "property": "outline_color"}
-		"_RimColor": return {"type": "color", "property": "rim_color"}
-		"_MatcapColor": return {"type": "color", "property": "matcap_color"}
-		"_MainTex_ST": return {"type": "uv", "property": "uv1"}
+		"_Color": return {"type": "color", "std_property": "albedo_color", "shader_property": "_Color"}
+		"_EmissionColor": return {"type": "color", "std_property": "emission", "shader_property": "_EmissionColor"}
+		"_ShadeColor", "_ShadedColor": return {"type": "color", "std_property": "", "shader_property": "_ShadeColor"}
+		"_OutlineColor": return {"type": "color", "std_property": "", "shader_property": "_OutlineColor"}
+		"_RimColor": return {"type": "color", "std_property": "", "shader_property": "_RimColor"}
+		"_MatcapColor": return {"type": "color", "std_property": "", "shader_property": "_MatcapColor"}
+		"_MainTex_ST": return {"type": "uv"}
 	return {}
+
+
+## Picks the correct single property name for prop_info against mat's concrete type.
+## Returns "" if mat's type has no equivalent for this VRM property.
+func _material_prop_for(prop_info: Dictionary, mat: Material) -> String:
+	if mat is ShaderMaterial:
+		return prop_info.get("shader_property", "")
+	if mat is BaseMaterial3D:
+		return prop_info.get("std_property", "")
+	return ""
+
+
+func _get_material_color(mat: Material, prop: String) -> Color:
+	if mat is ShaderMaterial:
+		var param: Variant = mat.get_shader_parameter(prop)
+		if typeof(param) == TYPE_COLOR:
+			return param
+	elif mat is BaseMaterial3D:
+		if prop in mat:
+			return mat.get(prop)
+	return Color.WHITE
+
+
+func _set_material_color(mat: Material, prop: String, value: Color) -> void:
+	if mat is ShaderMaterial:
+		mat.set_shader_parameter(prop, value)
+	elif mat is BaseMaterial3D:
+		mat.set(prop, value)
+
+
+## The MToon shader packs UV scale+offset into one _MainTex_ST vec4 uniform, unlike
+## BaseMaterial3D's separate uv1_scale/uv1_offset Vector3 properties.
+func _get_material_uv(mat: Material) -> RuntimeMaterialUVState:
+	var state := RuntimeMaterialUVState.new()
+	if mat is ShaderMaterial:
+		var param: Variant = mat.get_shader_parameter("_MainTex_ST")
+		if typeof(param) == TYPE_VECTOR4:
+			state.scale = Vector2(param.x, param.y)
+			state.offset = Vector2(param.z, param.w)
+	elif mat is BaseMaterial3D:
+		state.scale = Vector2(mat.uv1_scale.x, mat.uv1_scale.y)
+		state.offset = Vector2(mat.uv1_offset.x, mat.uv1_offset.y)
+	return state
+
+
+func _set_material_uv(mat: Material, scale: Vector2, offset: Vector2) -> void:
+	if mat is ShaderMaterial:
+		mat.set_shader_parameter("_MainTex_ST", Vector4(scale.x, scale.y, offset.x, offset.y))
+	elif mat is BaseMaterial3D:
+		mat.uv1_scale = Vector3(scale.x, scale.y, 1.0)
+		mat.uv1_offset = Vector3(offset.x, offset.y, 0.0)
 
 
 func _find_mesh_with_material(root: Node, mat_name: String) -> MeshInstance3D:

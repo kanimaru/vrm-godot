@@ -189,34 +189,41 @@ func _register_expression(expr_name: String, expr: Vrm1ExpressionData, gltf_stat
 				run_expr.morph_binds.append(rb)
 				
 	# Material color binds
+	# gltf_state.materials holds the pre-MToon-swap glTF-imported materials, never updated
+	# by VrmSceneComposer.apply_mtoon_materials - so the bind's actual material must be
+	# re-resolved by name against the live scene tree, or it ends up mutating an orphaned
+	# material that isn't part of what's rendered.
 	for cb: Vrm1ExpressionMaterialColorBind in expr.material_color_binds:
 		var materials: Array = gltf_state.materials
 		if cb.material >= 0 and cb.material < materials.size():
-			var mat: Material = materials[cb.material]
+			var gltf_mat: Material = materials[cb.material]
+			var mat: Material = VrmSceneComposer.find_material_by_name(root_node, gltf_mat.resource_name) if gltf_mat != null else null
 			if mat != null:
-				var prop_name: String = _resolve_material_prop_name(cb.type)
+				var prop_info: Dictionary = _resolve_material_prop_name(cb.type)
+				var prop_name: String = _material_prop_for(prop_info, mat)
 				var t_val: PackedFloat32Array = cb.target_value
-				if t_val.size() == 4:
+				if not prop_name.is_empty() and t_val.size() == 4:
 					var target_color: Color = Color(t_val[0], t_val[1], t_val[2], t_val[3])
-					
+
 					# Record base color
 					if not _base_material_colors.has(mat):
 						_base_material_colors[mat] = RuntimeMaterialColorState.new()
 					var base_color_state := _base_material_colors[mat] as RuntimeMaterialColorState
 					if not base_color_state.properties.has(prop_name):
 						base_color_state.properties[prop_name] = _get_material_color(mat, prop_name)
-						
+
 					var rb = RuntimeMaterialColorBind.new()
 					rb.material = mat
 					rb.prop = prop_name
 					rb.color = target_color
 					run_expr.color_binds.append(rb)
-					
+
 	# Texture transform binds
 	for tb: Vrm1ExpressionTextureTransformBind in expr.texture_transform_binds:
 		var materials: Array = gltf_state.materials
 		if tb.material >= 0 and tb.material < materials.size():
-			var mat: Material = materials[tb.material]
+			var gltf_mat: Material = materials[tb.material]
+			var mat: Material = VrmSceneComposer.find_material_by_name(root_node, gltf_mat.resource_name) if gltf_mat != null else null
 			if mat != null:
 				# Record base UV
 				if not _base_material_uvs.has(mat):
@@ -224,7 +231,7 @@ func _register_expression(expr_name: String, expr: Vrm1ExpressionData, gltf_stat
 					base_uv.scale = _get_material_uv_scale(mat)
 					base_uv.offset = _get_material_uv_offset(mat)
 					_base_material_uvs[mat] = base_uv
-					
+
 				var rb = RuntimeTextureTransformBind.new()
 				rb.material = mat
 				rb.scale = tb.scale
@@ -252,16 +259,30 @@ func _get_path_from_root(node: Node, root: Node) -> String:
 	return "/".join(path_segments)
 
 
-func _resolve_material_prop_name(vrm_color_type: String) -> String:
-	# Generic map which works for standard BaseMaterial and Godot VRM MToon logic
+## Resolves a VRM1 material color bind's type to both the BaseMaterial3D-native property
+## (used when a material fell back to a plain glTF PBR material with no MToon extension) and
+## the real MToon shader uniform name (used for the ShaderMaterial VrmMtoonBuilder normally
+## produces). shade/rim/matcap/outline have no BaseMaterial3D equivalent, so std_property is
+## left empty for those - _material_prop_for() treats that as "unsupported for this material".
+func _resolve_material_prop_name(vrm_color_type: String) -> Dictionary:
 	match vrm_color_type:
-		"color": return "albedo_color"
-		"emissionColor": return "emission"
-		"shadeColor": return "shade_color"
-		"matcapColor": return "matcap_color"
-		"rimColor": return "rim_color"
-		"outlineColor": return "outline_color"
-	return "albedo_color"
+		"color": return {"std_property": "albedo_color", "shader_property": "_Color"}
+		"emissionColor": return {"std_property": "emission", "shader_property": "_EmissionColor"}
+		"shadeColor": return {"std_property": "", "shader_property": "_ShadeColor"}
+		"matcapColor": return {"std_property": "", "shader_property": "_MatcapColor"}
+		"rimColor": return {"std_property": "", "shader_property": "_RimColor"}
+		"outlineColor": return {"std_property": "", "shader_property": "_OutlineColor"}
+	return {"std_property": "albedo_color", "shader_property": "_Color"}
+
+
+## Picks the correct single property name for prop_info against mat's concrete type.
+## Returns "" if mat's type has no equivalent for this VRM property.
+func _material_prop_for(prop_info: Dictionary, mat: Material) -> String:
+	if mat is ShaderMaterial:
+		return prop_info.get("shader_property", "")
+	if mat is BaseMaterial3D:
+		return prop_info.get("std_property", "")
+	return ""
 
 
 func _get_material_color(mat: Material, prop_name: String) -> Color:
@@ -272,16 +293,18 @@ func _get_material_color(mat: Material, prop_name: String) -> Color:
 		var param = mat.get_shader_parameter(prop_name)
 		if typeof(param) == TYPE_COLOR:
 			return param
-			
+
 	return Color.WHITE
 
 
+## The MToon shader packs UV scale+offset into one _MainTex_ST vec4 uniform, unlike
+## BaseMaterial3D's separate uv1_scale/uv1_offset Vector3 properties.
 func _get_material_uv_scale(mat: Material) -> Vector2:
 	if mat is BaseMaterial3D:
 		return Vector2(mat.uv1_scale.x, mat.uv1_scale.y)
 	elif mat is ShaderMaterial:
-		var param = mat.get_shader_parameter("uv1_scale")
-		if typeof(param) == TYPE_VECTOR3 or typeof(param) == TYPE_VECTOR2:
+		var param = mat.get_shader_parameter("_MainTex_ST")
+		if typeof(param) == TYPE_VECTOR4:
 			return Vector2(param.x, param.y)
 	return Vector2.ONE
 
@@ -290,9 +313,9 @@ func _get_material_uv_offset(mat: Material) -> Vector2:
 	if mat is StandardMaterial3D or mat is BaseMaterial3D:
 		return Vector2(mat.uv1_offset.x, mat.uv1_offset.y)
 	elif mat is ShaderMaterial:
-		var param = mat.get_shader_parameter("uv1_offset")
-		if typeof(param) == TYPE_VECTOR3 or typeof(param) == TYPE_VECTOR2:
-			return Vector2(param.x, param.y)
+		var param = mat.get_shader_parameter("_MainTex_ST")
+		if typeof(param) == TYPE_VECTOR4:
+			return Vector2(param.z, param.w)
 	return Vector2.ZERO
 
 
@@ -441,5 +464,4 @@ func _apply_expressions() -> void:
 			mat.uv1_scale = Vector3(base_s.x, base_s.y, 1.0)
 			mat.uv1_offset = Vector3(base_o.x, base_o.y, 0.0)
 		elif mat is ShaderMaterial:
-			mat.set_shader_parameter("uv1_scale", Vector3(base_s.x, base_s.y, 1.0))
-			mat.set_shader_parameter("uv1_offset", Vector3(base_o.x, base_o.y, 0.0))
+			mat.set_shader_parameter("_MainTex_ST", Vector4(base_s.x, base_s.y, base_o.x, base_o.y))
