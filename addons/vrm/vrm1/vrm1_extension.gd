@@ -65,6 +65,21 @@ func _import_post_parse(state: GLTFState) -> Error:
 				mtoon_configs.append(null)
 	state.set_additional_data("vrm1_mtoon", mtoon_configs)
 
+	# Parse per-node VRMC_node_constraint extensions.
+	# Produces a sparse node_index -> Vrm1NodeConstraint map (only nodes that carry the
+	# extension are present as keys — unlike mtoon_configs above, there is no downstream
+	# consumer that needs array-index alignment with the full node list).
+	var node_constraints: Dictionary[int, Vrm1NodeConstraint] = {}
+	if json.has("nodes"):
+		var gltf_node_json: Array = json["nodes"]
+		for node_idx: int in range(gltf_node_json.size()):
+			var node_json: Dictionary = gltf_node_json[node_idx]
+			if node_json.has("extensions") and node_json["extensions"].has("VRMC_node_constraint"):
+				var nc: Vrm1NodeConstraint = _parse_node_constraint(node_idx, node_json["extensions"]["VRMC_node_constraint"])
+				if nc != null:
+					node_constraints[node_idx] = nc
+	state.set_additional_data("vrm1_node_constraints", node_constraints)
+
 	return OK
 
 
@@ -331,6 +346,39 @@ func _parse_spring_bone_joint(d: Dictionary) -> Vrm1SpringBoneJoint:
 	return jt
 
 
+## Parses a single node's VRMC_node_constraint extension dict into a Vrm1NodeConstraint.
+## Returns null if the constraint object has none of roll/aim/rotation (malformed per spec,
+## which requires exactly one of the three).
+func _parse_node_constraint(node_idx: int, d: Dictionary) -> Vrm1NodeConstraint:
+	if not d.has("constraint"):
+		return null
+
+	var c: Dictionary = d["constraint"]
+	var nc: Vrm1NodeConstraint = Vrm1NodeConstraint.new()
+	nc.node = node_idx
+
+	if c.has("roll"):
+		var r: Dictionary = c["roll"]
+		nc.type = "roll"
+		nc.source = r.get("source", -1)
+		nc.roll_axis = r.get("rollAxis", "X")
+		nc.weight = r.get("weight", 1.0)
+	elif c.has("aim"):
+		var a: Dictionary = c["aim"]
+		nc.type = "aim"
+		nc.source = a.get("source", -1)
+		nc.aim_axis = a.get("aimAxis", "PositiveX")
+		nc.weight = a.get("weight", 1.0)
+	elif c.has("rotation"):
+		var rt: Dictionary = c["rotation"]
+		nc.type = "rotation"
+		nc.source = rt.get("source", -1)
+		nc.weight = rt.get("weight", 1.0)
+	else:
+		return null
+
+	return nc
+
 
 func _import_post(state: GLTFState, root: Node) -> Error:
 	var vrm_top_level: Vrm1TopLevel = state.get_additional_data("vrm1") as Vrm1TopLevel
@@ -358,14 +406,30 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	var skeleton: Skeleton3D = VRMUtil.find_skeleton(root)
 	VrmSceneComposer.rename_skeleton_to_general(skeleton)
 
+	var node_constraints_variant: Variant = state.get_additional_data("vrm1_node_constraints")
+	var has_node_constraints: bool = node_constraints_variant is Dictionary and not (node_constraints_variant as Dictionary).is_empty()
+	var need_node_names: bool = skeleton != null and (vrm_top_level.spring_bone != null or has_node_constraints)
+	var gltf_node_names: Dictionary[int, String] = (
+		VrmSceneComposer.resolve_all_node_names(state) if need_node_names else {}
+	)
+
 	if skeleton != null and vrm_top_level.spring_bone != null:
 		var spring_sim: Vrm1SpringBoneSimulator = Vrm1SpringBoneSimulator.new()
 		spring_sim.name = "Vrm1SpringBoneSimulator"
 		spring_sim.spring_bone_data = vrm_top_level.spring_bone
-		spring_sim.gltf_node_names = VrmSceneComposer.resolve_all_node_names(state)
+		spring_sim.gltf_node_names = gltf_node_names
 
 		skeleton.add_child(spring_sim, true)
 		spring_sim.owner = root
+
+	if skeleton != null and has_node_constraints:
+		var constraint_sim: Vrm1NodeConstraintSimulator = Vrm1NodeConstraintSimulator.new()
+		constraint_sim.name = "Vrm1NodeConstraintSimulator"
+		constraint_sim.node_constraints = node_constraints_variant
+		constraint_sim.gltf_node_names = gltf_node_names
+
+		skeleton.add_child(constraint_sim, true)
+		constraint_sim.owner = root
 
 	var expr_controller: Vrm1ExpressionController = null
 	if vrm_top_level.expressions != null:

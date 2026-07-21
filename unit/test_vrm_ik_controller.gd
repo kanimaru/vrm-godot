@@ -1,4 +1,4 @@
-extends GutTest
+extends "res://unit/vrm_gut_test.gd"
 
 const VrmIkController = preload("res://addons/vrm/common/vrm_ik_controller.gd")
 
@@ -206,10 +206,3 @@ func test_foot_rotation_sync_vrm0() -> void:
 
 	var foot_global_skel := skeleton.get_bone_global_pose(left_foot_idx).basis.orthonormalized().get_rotation_quaternion()
 	assert_eq_relative_rotation(foot_global_skel, expected_skel_q, "Foot skeleton-local global rotation should match expected pose")
-
-
-# Helper to assert quaternions are approximately equal
-func assert_eq_relative_rotation(q1: Quaternion, q2: Quaternion, msg: String = "") -> void:
-	var diff := q1.inverse() * q2
-	var angle := 2.0 * acos(clampf(absf(diff.w), -1.0, 1.0))
-	assert_lt(rad_to_deg(angle), 1.0, msg + " (diff angle: %f deg)" % rad_to_deg(angle))
