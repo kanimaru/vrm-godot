@@ -13,6 +13,15 @@ const RuntimeNodeMorphState = preload("uid://n3jfgxag1ls3")  # res://addons/vrm/
 const RuntimeMaterialColorState = preload("uid://628n3sjhgv68")  # res://addons/vrm/common/vrm_runtime_material_color_state.gd
 const RuntimeMaterialUVState = preload("uid://qt3oul1g0kj3")  # res://addons/vrm/common/vrm_runtime_material_uv_state.gd
 
+## VRM0's presetName enum spells gaze presets without a separator; map them to the
+## underscored property names used everywhere else in this controller.
+const VRM0_GAZE_PRESET_ALIASES: Dictionary[String, String] = {
+	"lookup": "look_up",
+	"lookdown": "look_down",
+	"lookleft": "look_left",
+	"lookright": "look_right",
+}
+
 
 var _binds: Dictionary[String, RuntimeExpression] = {}
 var expressions: Array[String]: 
@@ -62,6 +71,15 @@ var _base_material_uvs: Dictionary[NodePath, RuntimeMaterialUVState] = {}
 @export_range(0.0, 1.0) var blink_right: float = 0.0:
 	set(v): blink_right = clampf(v, 0.0, 1.0); _request_update()
 
+@export_range(0.0, 1.0) var look_up: float = 0.0:
+	set(v): look_up = clampf(v, 0.0, 1.0); _request_update()
+@export_range(0.0, 1.0) var look_down: float = 0.0:
+	set(v): look_down = clampf(v, 0.0, 1.0); _request_update()
+@export_range(0.0, 1.0) var look_left: float = 0.0:
+	set(v): look_left = clampf(v, 0.0, 1.0); _request_update()
+@export_range(0.0, 1.0) var look_right: float = 0.0:
+	set(v): look_right = clampf(v, 0.0, 1.0); _request_update()
+
 
 func _request_update() -> void:
 	_dirty = true
@@ -75,7 +93,7 @@ func _process(_delta: float) -> void:
 
 func set_expression(expression_name: String, value: float) -> void:
 	var standard_prop = expression_name.to_lower()
-	if standard_prop in ["neutral", "joy", "angry", "sorrow", "fun", "a", "i", "u", "e", "o", "blink", "blink_left", "blink_right"]:
+	if standard_prop in ["neutral", "joy", "angry", "sorrow", "fun", "a", "i", "u", "e", "o", "blink", "blink_left", "blink_right", "look_up", "look_down", "look_left", "look_right"]:
 		set(standard_prop, value)
 	else:
 		custom_expressions[expression_name] = value
@@ -116,7 +134,7 @@ func _apply_expressions() -> void:
 	# Accumulate and apply all active expressions
 	for expr_key in _binds:
 		var val: float = 0.0
-		if expr_key in ["neutral", "joy", "angry", "sorrow", "fun", "a", "i", "u", "e", "o", "blink", "blink_left", "blink_right"]:
+		if expr_key in ["neutral", "joy", "angry", "sorrow", "fun", "a", "i", "u", "e", "o", "blink", "blink_left", "blink_right", "look_up", "look_down", "look_left", "look_right"]:
 			val = get(expr_key)
 		else:
 			val = custom_expressions.get(expr_key, 0.0)
@@ -165,6 +183,10 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 		var expression_key: String = group.preset_name.to_lower()
 		if expression_key == "" or expression_key == "unknown":
 			expression_key = group.name.to_lower()
+		# VRM0's presetName enum spells these without a separator ("lookup", "lookleft", ...);
+		# normalize to the underscored property names so they hit the exported gaze properties
+		# above instead of silently falling through to custom_expressions.
+		expression_key = VRM0_GAZE_PRESET_ALIASES.get(expression_key, expression_key)
 
 		# Morph binds
 		for blend_shape_bind: Vrm0BlendShapeBind in group.binds:
@@ -258,6 +280,8 @@ func _resolve_vrm0_material_property(vrm0_prop: String) -> Dictionary:
 		"_EmissionColor": return {"type": "color", "property": "emission"}
 		"_ShadeColor", "_ShadedColor": return {"type": "color", "property": "shade_color"}
 		"_OutlineColor": return {"type": "color", "property": "outline_color"}
+		"_RimColor": return {"type": "color", "property": "rim_color"}
+		"_MatcapColor": return {"type": "color", "property": "matcap_color"}
 		"_MainTex_ST": return {"type": "uv", "property": "uv1"}
 	return {}
 
