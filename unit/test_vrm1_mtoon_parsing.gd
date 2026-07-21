@@ -234,6 +234,43 @@ func test_emissive_color_absent_when_key_missing() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Emissive multiplier
+# (VRMC_materials_hdr_emissiveMultiplier / KHR_materials_emissive_strength — both are
+# siblings of VRMC_materials_mtoon under material.extensions, not nested inside it)
+# ---------------------------------------------------------------------------
+
+func test_emissive_multiplier_defaults_to_one_when_no_extension_present() -> void:
+	var p: Dictionary = _parse(_make_mat())
+
+	assert_eq(p["emissive_multiplier"], 1.0)
+
+
+func test_emissive_multiplier_parsed_from_vrmc_hdr_extension() -> void:
+	var mat_json: Dictionary = _make_mat()
+	mat_json["extensions"]["VRMC_materials_hdr_emissiveMultiplier"] = { "emissiveMultiplier": 3.5 }
+	var p: Dictionary = _parse(mat_json)
+
+	assert_eq(p["emissive_multiplier"], 3.5)
+
+
+func test_emissive_multiplier_parsed_from_khr_emissive_strength_fallback() -> void:
+	var mat_json: Dictionary = _make_mat()
+	mat_json["extensions"]["KHR_materials_emissive_strength"] = { "emissiveStrength": 2.0 }
+	var p: Dictionary = _parse(mat_json)
+
+	assert_eq(p["emissive_multiplier"], 2.0)
+
+
+func test_emissive_multiplier_prefers_vrmc_hdr_over_khr_when_both_present() -> void:
+	var mat_json: Dictionary = _make_mat()
+	mat_json["extensions"]["VRMC_materials_hdr_emissiveMultiplier"] = { "emissiveMultiplier": 3.5 }
+	mat_json["extensions"]["KHR_materials_emissive_strength"] = { "emissiveStrength": 2.0 }
+	var p: Dictionary = _parse(mat_json)
+
+	assert_eq(p["emissive_multiplier"], 3.5)
+
+
+# ---------------------------------------------------------------------------
 # Rim
 # ---------------------------------------------------------------------------
 

@@ -16,6 +16,7 @@ func _get_supported_extensions() -> PackedStringArray:
 		"VRMC_springBone",
 		"VRMC_node_constraint",
 		"VRMC_vrm_animation",
+		"VRMC_materials_hdr_emissiveMultiplier",
 	])
 
 
@@ -481,6 +482,7 @@ func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> Dictionary:
 		p["emissive_color"] = Color(e[0], e[1], e[2])
 	if mat_json.has("emissiveTexture"):
 		p["emissive_texture"] = _resolve_gltf_texture(mat_json["emissiveTexture"], state)
+	p["emissive_multiplier"] = _resolve_emissive_multiplier(mat_json)
 
 	# --- Alpha ---
 	# transparentWithZWrite is a VRM-spec boolean inside the MToon extension that
@@ -564,6 +566,19 @@ func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> Dictionary:
 		p["uv_anim_mask_texture"] = _resolve_gltf_texture(ext["uvAnimationMaskTexture"], state)
 
 	return p
+
+
+## Reads the emissive multiplier from whichever sibling material extension carries it.
+## VRMC_materials_hdr_emissiveMultiplier (archived VRM1) and KHR_materials_emissive_strength
+## (its Khronos-standard successor) both sit alongside VRMC_materials_mtoon under
+## material.extensions, not nested inside it. Defaults to 1.0 (no-op) if neither is present.
+func _resolve_emissive_multiplier(mat_json: Dictionary) -> float:
+	var mat_ext: Dictionary = mat_json.get("extensions", {})
+	if mat_ext.has("VRMC_materials_hdr_emissiveMultiplier"):
+		return mat_ext["VRMC_materials_hdr_emissiveMultiplier"].get("emissiveMultiplier", 1.0)
+	if mat_ext.has("KHR_materials_emissive_strength"):
+		return mat_ext["KHR_materials_emissive_strength"].get("emissiveStrength", 1.0)
+	return 1.0
 
 
 ## Extracts UV scale+offset from a KHR_texture_transform extension on a textureInfo dict.
