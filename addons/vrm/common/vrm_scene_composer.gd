@@ -134,6 +134,74 @@ static func find_material_by_name(root: Node, material_name: String) -> Material
 	return null
 
 
+## Builds a native SpringBoneCollision3D-derived node from a VRM spring bone collider shape,
+## bridging the VRM spec's offset/tail/normal model onto Godot's own conventions:
+## - Sphere: position_offset is the center, matches directly.
+## - Capsule: position_offset is the CENTER of the capsule (not one end, as VRM's `offset`
+##   is), and it extends along local +Y for `height` (mid_height = height - 2*radius is the
+##   distance between the two hemisphere centers). rotation_offset aims that +Y axis at the
+##   offset->tail direction.
+## - Plane: the collision plane's normal is always local +Y; rotation_offset aims that at
+##   the VRM-authored normal.
+## Caller is responsible for parenting the returned node under the owning
+## SpringBoneSimulator3D (a hard requirement of set_collision_path) and registering its
+## path via set_collision_count/set_collision_path.
+static func build_spring_bone_collision(
+		shape_type: String,
+		bone_name: String,
+		offset: Vector3,
+		radius: float,
+		tail: Vector3 = Vector3.ZERO,
+		normal: Vector3 = Vector3.UP,
+		inside: bool = false,
+) -> SpringBoneCollision3D:
+	match shape_type:
+		"capsule":
+			var node := SpringBoneCollisionCapsule3D.new()
+			node.bone_name = bone_name
+			var dir: Vector3 = tail - offset
+			var dir_length: float = dir.length()
+			node.position_offset = (offset + tail) * 0.5
+			if dir_length > 0.0001:
+				node.rotation_offset = Quaternion(Vector3.UP, dir / dir_length)
+				node.height = dir_length + radius * 2.0
+			else:
+				node.height = radius * 2.0
+			node.radius = radius
+			node.inside = inside
+			return node
+		"plane":
+			var node := SpringBoneCollisionPlane3D.new()
+			node.bone_name = bone_name
+			node.position_offset = offset
+			var n: Vector3 = normal.normalized() if normal.length() > 0.0001 else Vector3.UP
+			node.rotation_offset = Quaternion(Vector3.UP, n)
+			return node
+		_:
+			var node := SpringBoneCollisionSphere3D.new()
+			node.bone_name = bone_name
+			node.position_offset = offset
+			node.radius = radius
+			node.inside = inside
+			return node
+
+
+## Returns every leaf-bone (no children) descendant reachable from root_bone_idx, including
+## root_bone_idx itself if it has no children. VRM0's spring bone spec has no explicit joint
+## list like VRM1 - a spring's `bones` array only names each chain's root, and the whole
+## subtree beneath it is meant to sway - so callers need this to build one simulator setting
+## per linear root-to-leaf path (a branching hierarchy, e.g. a two-strand ponytail, becomes
+## two settings).
+static func find_leaf_bones(skeleton: Skeleton3D, root_bone_idx: int) -> PackedInt32Array:
+	var children: PackedInt32Array = skeleton.get_bone_children(root_bone_idx)
+	if children.is_empty():
+		return PackedInt32Array([root_bone_idx])
+	var leaves := PackedInt32Array()
+	for child_idx: int in children:
+		leaves.append_array(find_leaf_bones(skeleton, child_idx))
+	return leaves
+
+
 ## Recursively walks the scene tree from root, swapping in MToon materials by matching
 ## surface material resource_name against name_to_shader.
 ## During _import_post, mesh nodes are ImporterMeshInstance3D with an ImporterMesh, which

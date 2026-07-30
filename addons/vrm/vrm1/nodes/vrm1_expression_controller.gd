@@ -96,7 +96,7 @@ var _base_morphs: Dictionary[NodePath, RuntimeNodeMorphState] = {}
 var _base_material_colors: Dictionary[Material, RuntimeMaterialColorState] = {}
 var _base_material_uvs: Dictionary[Material, RuntimeMaterialUVState] = {}
 
-var expressions: Array[String]: 
+var expressions: Array[String]:
 	get():
 		var typed: Array[String] = []
 		typed.assign(_binds.keys())
@@ -131,15 +131,15 @@ func compile_vrm1_binds(expressions_ref: Vrm1Expressions, gltf_state: GLTFState,
 	_base_morphs.clear()
 	_base_material_colors.clear()
 	_base_material_uvs.clear()
-	
+
 	if expressions_ref == null:
 		return
-				
+
 	# Gather presets
 	for preset_name: String in expressions_ref.preset:
 		var expr: Vrm1ExpressionData = expressions_ref.preset[preset_name]
 		_register_expression(preset_name, expr, gltf_state, root_node)
-		
+
 	# Gather custom
 	for custom_name: String in expressions_ref.custom:
 		var expr: Vrm1ExpressionData = expressions_ref.custom[custom_name]
@@ -152,7 +152,7 @@ func _register_expression(expr_name: String, expr: Vrm1ExpressionData, gltf_stat
 	run_expr.override_blink = expr.override_blink
 	run_expr.override_look_at = expr.override_look_at
 	run_expr.override_mouth = expr.override_mouth
-	
+
 	# Morph binds
 	for mb: Vrm1ExpressionMorphBind in expr.morph_binds:
 		var node_index: int = mb.node
@@ -167,13 +167,13 @@ func _register_expression(expr_name: String, expr: Vrm1ExpressionData, gltf_stat
 				if not node_inst:
 					# Fallback for Godot's dot-to-underscore node name sanitization
 					node_inst = root_node.find_child(node_name.replace(".", "_"), true, false)
-			
+
 			var is_mesh := node_inst is MeshInstance3D or (node_inst and node_inst.get_class() == "ImporterMeshInstance3D")
 			if node_inst and is_mesh:
 				# Manual relative path calculation because get_path_to() fails if not in tree
 				var path_from_root: String = _get_path_from_root(node_inst, root_node)
 				var path: NodePath = NodePath("../" + path_from_root)
-				
+
 				# Record base morph if not recorded
 				var base_morph: RuntimeNodeMorphState = _base_morphs.get_or_add(path, RuntimeNodeMorphState.new())
 				if not base_morph.blend_shapes.has(mb.index):
@@ -181,13 +181,13 @@ func _register_expression(expr_name: String, expr: Vrm1ExpressionData, gltf_stat
 						base_morph.blend_shapes[mb.index] = node_inst.get_blend_shape_value(mb.index)
 					else:
 						base_morph.blend_shapes[mb.index] = 0.0
-				
+
 				var rb = RuntimeMorphBind.new()
 				rb.path = path
 				rb.index = mb.index
 				rb.weight = mb.weight
 				run_expr.morph_binds.append(rb)
-				
+
 	# Material color binds
 	# gltf_state.materials holds the pre-MToon-swap glTF-imported materials, never updated
 	# by VrmSceneComposer.apply_mtoon_materials - so the bind's actual material must be
@@ -331,12 +331,12 @@ func _apply_expressions() -> void:
 	var accumulated_colors: Dictionary[Material, RefCounted] = {}
 	var accumulated_uv_scales: Dictionary[Material, Vector2] = {}
 	var accumulated_uv_offsets: Dictionary[Material, Vector2] = {}
-	
+
 	# Determine blocked categories via overrides
 	var blocked_blink: bool = false
 	var blocked_look_at: bool = false
 	var blocked_mouth: bool = false
-	
+
 	# We collect active expressions and process overrides beforehand
 	var active_expressions: Array[Vrm1ActiveExpression] = []
 	for expr_name: String in _binds.keys():
@@ -345,7 +345,7 @@ func _apply_expressions() -> void:
 			var data: RuntimeExpression = _binds[expr_name]
 			if data.is_binary:
 				w = 1.0 if w > 0.5 else 0.0
-				
+
 			if w > 0.0:
 				var active_expr: Vrm1ActiveExpression = Vrm1ActiveExpression.new()
 				active_expr.name = expr_name
@@ -361,7 +361,7 @@ func _apply_expressions() -> void:
 		var w: float = active_expr.weight
 		var expr_name: String = active_expr.name
 		var data: RuntimeExpression = active_expr.data
-		
+
 		# Skip if blocked (rough mapping of categories based on preset names)
 		if blocked_blink and (expr_name in ["blink", "blinkLeft", "blinkRight", "blink_left", "blink_right"]):
 			continue
@@ -369,14 +369,14 @@ func _apply_expressions() -> void:
 			continue
 		if blocked_mouth and (expr_name in ["aa", "ih", "ou", "ee", "oh"]):
 			continue
-			
+
 		for bind: RuntimeMorphBind in data.morph_binds:
 			var path: NodePath = bind.path
 			var idx: int = bind.index
 			var morph_state: RuntimeNodeMorphState = accumulated_morphs.get_or_add(path, RuntimeNodeMorphState.new())
 			var cur: float = morph_state.blend_shapes.get(idx, 0.0)
 			morph_state.blend_shapes[idx] = cur + (bind.weight * w)
-			
+
 		for bind: RuntimeMaterialColorBind in data.color_binds:
 			var mat: Material = bind.material
 			var prop: String = bind.prop
@@ -388,7 +388,7 @@ func _apply_expressions() -> void:
 			var delta: Color = target_color - base_color
 			cur_color += delta * w
 			accum_color_state.properties[prop] = cur_color
-			
+
 		for bind: RuntimeTextureTransformBind in data.uv_binds:
 			var mat: Material = bind.material
 			var target_s: Vector2 = bind.scale
@@ -396,17 +396,17 @@ func _apply_expressions() -> void:
 			var base_uv_state: RuntimeMaterialUVState = _base_material_uvs[mat]
 			var base_s: Vector2 = base_uv_state.scale
 			var base_o: Vector2 = base_uv_state.offset
-			
-			if not accumulated_uv_scales.has(mat): 
+
+			if not accumulated_uv_scales.has(mat):
 				accumulated_uv_scales[mat] = base_s
 				accumulated_uv_offsets[mat] = base_o
-				
+
 			var cur_s: Vector2 = accumulated_uv_scales[mat]
 			var cur_o: Vector2 = accumulated_uv_offsets[mat]
-			
+
 			var ds = target_s - base_s
 			var do = target_o - base_o
-			
+
 			accumulated_uv_scales[mat] = cur_s + (ds * w)
 			accumulated_uv_offsets[mat] = cur_o + (do * w)
 
@@ -422,12 +422,12 @@ func _apply_expressions() -> void:
 					var accum_morph_state: RuntimeNodeMorphState = accumulated_morphs[path]
 					if accum_morph_state.blend_shapes.has(idx):
 						accumulated = accum_morph_state.blend_shapes[idx]
-				
+
 				var final_value: float = clampf(base_val + accumulated, 0.0, 1.0)
 				node.set_blend_shape_value(idx, final_value)
 		else:
 			printerr("[Vrm1ExpressionController] Failed to resolve node at path: ", path)
-				
+
 	# Apply Material Colors
 	for mat in _base_material_colors.keys():
 		var base_state := _base_material_colors[mat] as RuntimeMaterialColorState
@@ -438,13 +438,13 @@ func _apply_expressions() -> void:
 				var accum_color_state := accumulated_colors[mat] as RuntimeMaterialColorState
 				if accum_color_state.properties.has(prop):
 					t_color = accum_color_state.properties[prop]
-				
+
 			# Clamped output
 			t_color.r = clampf(t_color.r, 0.0, 1.0)
 			t_color.g = clampf(t_color.g, 0.0, 1.0)
 			t_color.b = clampf(t_color.b, 0.0, 1.0)
 			t_color.a = clampf(t_color.a, 0.0, 1.0)
-			
+
 			if mat is StandardMaterial3D or mat is BaseMaterial3D:
 				mat.set(prop, t_color)
 			elif mat is ShaderMaterial:
@@ -455,11 +455,11 @@ func _apply_expressions() -> void:
 		var base_uv_state: RuntimeMaterialUVState = _base_material_uvs[mat]
 		var base_s: Vector2 = base_uv_state.scale
 		var base_o: Vector2 = base_uv_state.offset
-		
+
 		if accumulated_uv_scales.has(mat):
 			base_s = accumulated_uv_scales[mat]
 			base_o = accumulated_uv_offsets[mat]
-			
+
 		if mat is StandardMaterial3D or mat is BaseMaterial3D:
 			mat.uv1_scale = Vector3(base_s.x, base_s.y, 1.0)
 			mat.uv1_offset = Vector3(base_o.x, base_o.y, 0.0)
