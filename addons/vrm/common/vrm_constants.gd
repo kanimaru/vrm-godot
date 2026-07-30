@@ -14,6 +14,16 @@ const BONE_LEFT_EYE = "leftEye"
 const BONE_RIGHT_EYE = "rightEye"
 const BONE_JAW = "jaw"
 
+# First-person mesh visibility (VRMC_vrm.firstPerson / VRM0 firstPerson.meshAnnotations).
+# A mesh stays on Godot's default render layer (1) unless annotated otherwise; these two
+# extra layers are where thirdPersonOnly/firstPersonOnly meshes get moved to instead. This
+# plugin only assigns layers - it has no camera of its own, so a game using this feature
+# must set its own cull_masks: a first-person/VR camera should include layer 1 and
+# FIRST_PERSON_ONLY_LAYER but exclude THIRD_PERSON_ONLY_LAYER; a third-person camera should
+# include layer 1 and THIRD_PERSON_ONLY_LAYER but exclude FIRST_PERSON_ONLY_LAYER.
+const FIRST_PERSON_ONLY_LAYER = 2
+const THIRD_PERSON_ONLY_LAYER = 3
+
 # Extension keys
 const EXT_VRM0 = "VRM"
 const EXT_VRM1_CORE = "VRMC_vrm"

@@ -36,6 +36,28 @@ static func resolve_all_node_names(state: GLTFState) -> Dictionary[int, String]:
 	return node_names
 
 
+## Resolves a glTF node index to its scene node, preferring GLTFState's own mapping (built
+## during import) and falling back to a name-based find_child (needed once the scene has
+## already round-tripped through save/load, where GLTFState's node cache no longer applies).
+## Handles Godot's dot-to-underscore node name sanitization on the fallback path.
+static func resolve_scene_node(state: GLTFState, root: Node, node_index: int) -> Node:
+	var gltf_nodes: Array[GLTFNode] = state.get_nodes()
+	if node_index < 0 or node_index >= gltf_nodes.size():
+		return null
+
+	var node_inst: Node = state.get_scene_node(node_index)
+	if node_inst != null:
+		return node_inst
+
+	var node_name: String = resolve_node_name(gltf_nodes[node_index])
+	if node_name.is_empty():
+		return null
+	node_inst = root.find_child(node_name, true, false)
+	if node_inst == null:
+		node_inst = root.find_child(node_name.replace(".", "_"), true, false)
+	return node_inst
+
+
 ## Creates and attaches a VrmAnimationRetargeter, wiring it to the root's AnimationPlayer
 ## if one already exists.
 static func attach_retargeter(root: Node) -> void:

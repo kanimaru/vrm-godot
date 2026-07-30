@@ -217,3 +217,62 @@ func test_build_spring_bone_collision_plane_aims_normal() -> void:
 	assert_eq(node.position_offset, Vector3(0, 0.1, 0))
 	var rotated_up: Vector3 = node.rotation_offset * Vector3.UP
 	assert_almost_eq(rotated_up.z, 1.0, 0.0001, "local +Y rotated by rotation_offset should point along the authored normal")
+
+
+# ---------------------------------------------------------------------------
+# resolve_scene_node
+# GLTFState.get_scene_node() only resolves once a real generate_scene() has populated its
+# internal cache, so a synthetic GLTFState (no real import) always falls through to the
+# name-based find_child - these tests exercise exactly that fallback path.
+# ---------------------------------------------------------------------------
+
+func _make_state_with_node(original_name: String) -> GLTFState:
+	var gnode := GLTFNode.new()
+	gnode.original_name = original_name
+	var state := GLTFState.new()
+	var nodes: Array[GLTFNode] = [gnode]
+	state.nodes = nodes
+	return state
+
+
+func test_resolve_scene_node_finds_by_name_fallback() -> void:
+	var state := _make_state_with_node("Foo")
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var foo := Node3D.new()
+	foo.name = "Foo"
+	root.add_child(foo)
+
+	var found: Node = VrmSceneComposer.resolve_scene_node(state, root, 0)
+
+	assert_eq(found, foo)
+
+
+func test_resolve_scene_node_handles_dot_to_underscore_sanitization() -> void:
+	var state := _make_state_with_node("Foo.Bar")
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var sanitized := Node3D.new()
+	sanitized.name = "Foo_Bar"  # Godot's own node-name sanitization replaces "." with "_"
+	root.add_child(sanitized)
+
+	var found: Node = VrmSceneComposer.resolve_scene_node(state, root, 0)
+
+	assert_eq(found, sanitized)
+
+
+func test_resolve_scene_node_returns_null_for_out_of_range_index() -> void:
+	var state := _make_state_with_node("Foo")
+	var root := Node3D.new()
+	add_child_autofree(root)
+
+	assert_null(VrmSceneComposer.resolve_scene_node(state, root, 5))
+	assert_null(VrmSceneComposer.resolve_scene_node(state, root, -1))
+
+
+func test_resolve_scene_node_returns_null_when_no_matching_child() -> void:
+	var state := _make_state_with_node("DoesNotExist")
+	var root := Node3D.new()
+	add_child_autofree(root)
+
+	assert_null(VrmSceneComposer.resolve_scene_node(state, root, 0))

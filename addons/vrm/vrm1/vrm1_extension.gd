@@ -456,7 +456,37 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			look_at_controller.owner = root
 			look_at_controller.setup(vrm_top_level.look_at, skeleton, expr_controller)
 
+	_apply_first_person_visibility(root, vrm_top_level.first_person, state)
+
 	return OK
+
+
+## Moves thirdPersonOnly/firstPersonOnly-annotated meshes off Godot's default render layer
+## (1) onto VrmConstants.THIRD_PERSON_ONLY_LAYER / FIRST_PERSON_ONLY_LAYER respectively -
+## see those constants for how a game's own cameras need to be configured to use this.
+##
+## The spec's `auto` classification (splitting a single mesh into head/non-head triangle
+## groups by per-vertex skin weight) is deliberately NOT implemented: real VRM content
+## commonly has one "Body" mesh whose vertices span both the head and the rest of the
+## body (confirmed against this repo's own test assets), so a whole-mesh auto-detection
+## heuristic would misclassify it and hide the entire avatar in first-person view - worse
+## than doing nothing. `auto` and meshes with no annotation at all are left on the default
+## layer, matching the `both` behavior, until a real per-triangle split is implemented.
+func _apply_first_person_visibility(root: Node, first_person: Vrm1FirstPerson, state: GLTFState) -> void:
+	if first_person == null:
+		return
+	for annotation: Vrm1FirstPersonMeshAnnotation in first_person.mesh_annotations:
+		if annotation.type != "thirdPersonOnly" and annotation.type != "firstPersonOnly":
+			continue
+		var mesh_node: Node = VrmSceneComposer.resolve_scene_node(state, root, annotation.node)
+		if not (mesh_node is VisualInstance3D):
+			continue
+		var visual: VisualInstance3D = mesh_node
+		visual.set_layer_mask_value(1, false)
+		visual.set_layer_mask_value(
+				VrmConstants.THIRD_PERSON_ONLY_LAYER if annotation.type == "thirdPersonOnly" else VrmConstants.FIRST_PERSON_ONLY_LAYER,
+				true,
+		)
 
 
 # ---------------------------------------------------------------------------
