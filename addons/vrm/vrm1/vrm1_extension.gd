@@ -454,7 +454,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			look_at_controller.unique_name_in_owner = true
 			root.add_child(look_at_controller, true)
 			look_at_controller.owner = root
-			look_at_controller.setup(vrm_top_level.look_at, skeleton, expr_controller)
+			look_at_controller.setup(vrm_top_level.look_at, skeleton, root, expr_controller)
 
 	_apply_first_person_visibility(root, vrm_top_level.first_person, state)
 
