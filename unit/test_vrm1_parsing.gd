@@ -22,8 +22,10 @@ func test_parse_meta_all_fields() -> void:
 	var d: Dictionary = {
 		"name": "Test Avatar",
 		"version": "2.0",
+		"authors": ["Alice", "Bob"],
 		"copyrightInformation": "© 2024",
 		"contactInformation": "contact@example.com",
+		"references": ["https://example.com/original-work"],
 		"thirdPartyLicenses": "Some licenses",
 		"thumbnailImage": 5,
 		"licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
@@ -36,14 +38,17 @@ func test_parse_meta_all_fields() -> void:
 		"creditNotation": "unnecessary",
 		"allowRedistribution": true,
 		"modification": "allowModification",
+		"otherLicenseUrl": "https://example.com/custom-license",
 	}
 
 	var meta: Vrm1Meta = _ext.call("_parse_meta", d)
 
 	assert_eq(meta.name, "Test Avatar")
 	assert_eq(meta.version, "2.0")
+	assert_eq(meta.authors, PackedStringArray(["Alice", "Bob"]))
 	assert_eq(meta.copyright_information, "© 2024")
 	assert_eq(meta.contact_information, "contact@example.com")
+	assert_eq(meta.references, PackedStringArray(["https://example.com/original-work"]))
 	assert_eq(meta.third_party_licenses, "Some licenses")
 	assert_eq(meta.thumbnail_image, 5)
 	assert_eq(meta.license_url, "https://creativecommons.org/licenses/by/4.0/")
@@ -56,12 +61,15 @@ func test_parse_meta_all_fields() -> void:
 	assert_eq(meta.credit_notation, "unnecessary")
 	assert_true(meta.allow_redistribution)
 	assert_eq(meta.modification, "allowModification")
+	assert_eq(meta.other_license_url, "https://example.com/custom-license")
 
 
 func test_parse_meta_defaults_when_empty() -> void:
 	var meta: Vrm1Meta = _ext.call("_parse_meta", {})
 
 	assert_eq(meta.name, "")
+	assert_eq(meta.authors, PackedStringArray())
+	assert_eq(meta.references, PackedStringArray())
 	assert_eq(meta.thumbnail_image, -1)
 	assert_eq(meta.license_url, "https://vrm.dev/licenses/1.0/")
 	assert_eq(meta.avatar_permission, "onlyAuthor")
@@ -70,6 +78,7 @@ func test_parse_meta_defaults_when_empty() -> void:
 	assert_eq(meta.credit_notation, "required")
 	assert_false(meta.allow_redistribution)
 	assert_eq(meta.modification, "prohibited")
+	assert_eq(meta.other_license_url, "")
 
 
 # ---------------------------------------------------------------------------

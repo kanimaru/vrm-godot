@@ -20,3 +20,4 @@ class_name Vrm1Meta
 @export var credit_notation: String = "required"
 @export var allow_redistribution: bool = false
 @export var modification: String = "prohibited"
+@export var other_license_url: String = ""

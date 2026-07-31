@@ -60,6 +60,8 @@ func _build_meta_section(meta: Vrm1Meta) -> void:
 	var lic_group := UI.make_group_container()
 	var lic_content := UI.get_group_content(lic_group)
 	lic_content.add_child(UI.make_row("License URL", meta.license_url))
+	if not meta.other_license_url.is_empty():
+		lic_content.add_child(UI.make_row("Other License URL", meta.other_license_url))
 	lic_content.add_child(UI.make_row("Avatar Permission", meta.avatar_permission))
 	lic_content.add_child(UI.make_row("Commercial Usage", meta.commercial_usage))
 	lic_content.add_child(UI.make_row("Modification", meta.modification))

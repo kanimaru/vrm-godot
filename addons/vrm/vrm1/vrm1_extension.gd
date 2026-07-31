@@ -88,9 +88,10 @@ func _parse_meta(d: Dictionary) -> Vrm1Meta:
 	var meta: Vrm1Meta = Vrm1Meta.new()
 	meta.name = d.get("name", "")
 	meta.version = d.get("version", "")
-	# Skipping array details for brevity in basic parser but explicit types rule observed
+	meta.authors = PackedStringArray(d.get("authors", []))
 	meta.copyright_information = d.get("copyrightInformation", "")
 	meta.contact_information = d.get("contactInformation", "")
+	meta.references = PackedStringArray(d.get("references", []))
 	meta.third_party_licenses = d.get("thirdPartyLicenses", "")
 	meta.thumbnail_image = d.get("thumbnailImage", -1)
 	meta.license_url = d.get("licenseUrl", "https://vrm.dev/licenses/1.0/")
@@ -103,6 +104,7 @@ func _parse_meta(d: Dictionary) -> Vrm1Meta:
 	meta.credit_notation = d.get("creditNotation", "required")
 	meta.allow_redistribution = d.get("allowRedistribution", false)
 	meta.modification = d.get("modification", "prohibited")
+	meta.other_license_url = d.get("otherLicenseUrl", "")
 	return meta
 
 
