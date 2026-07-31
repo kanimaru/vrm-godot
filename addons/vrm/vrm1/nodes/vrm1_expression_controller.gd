@@ -332,10 +332,16 @@ func _apply_expressions() -> void:
 	var accumulated_uv_scales: Dictionary[Material, Vector2] = {}
 	var accumulated_uv_offsets: Dictionary[Material, Vector2] = {}
 
-	# Determine blocked categories via overrides
+	# Determine block/blend state per procedural category from all active overriding
+	# expressions. Per expressions.md's "Procedural override" section: `block` forces the
+	# target category's weight to 0 outright; `blend` instead accumulates an attenuation
+	# factor (1 - saturate(sum of overriding weights)) that scales the target's own weight.
 	var blocked_blink: bool = false
 	var blocked_look_at: bool = false
 	var blocked_mouth: bool = false
+	var blend_sum_blink: float = 0.0
+	var blend_sum_look_at: float = 0.0
+	var blend_sum_mouth: float = 0.0
 
 	# We collect active expressions and process overrides beforehand
 	var active_expressions: Array[Vrm1ActiveExpression] = []
@@ -352,10 +358,21 @@ func _apply_expressions() -> void:
 				active_expr.weight = w
 				active_expr.data = data
 				active_expressions.append(active_expr)
-				# Process block overrides natively
+
 				if data.override_blink == "block": blocked_blink = true
+				elif data.override_blink == "blend": blend_sum_blink += w
 				if data.override_look_at == "block": blocked_look_at = true
+				elif data.override_look_at == "blend": blend_sum_look_at += w
 				if data.override_mouth == "block": blocked_mouth = true
+				elif data.override_mouth == "blend": blend_sum_mouth += w
+
+	var blend_factor_blink: float = 1.0 - clampf(blend_sum_blink, 0.0, 1.0)
+	var blend_factor_look_at: float = 1.0 - clampf(blend_sum_look_at, 0.0, 1.0)
+	var blend_factor_mouth: float = 1.0 - clampf(blend_sum_mouth, 0.0, 1.0)
+
+	const BLINK_NAMES: Array[String] = ["blink", "blinkLeft", "blinkRight", "blink_left", "blink_right"]
+	const LOOK_AT_NAMES: Array[String] = ["lookUp", "lookDown", "lookLeft", "lookRight", "look_up", "look_down", "look_left", "look_right"]
+	const MOUTH_NAMES: Array[String] = ["aa", "ih", "ou", "ee", "oh"]
 
 	for active_expr: Vrm1ActiveExpression in active_expressions:
 		var w: float = active_expr.weight
@@ -363,11 +380,25 @@ func _apply_expressions() -> void:
 		var data: RuntimeExpression = active_expr.data
 
 		# Skip if blocked (rough mapping of categories based on preset names)
-		if blocked_blink and (expr_name in ["blink", "blinkLeft", "blinkRight", "blink_left", "blink_right"]):
+		if blocked_blink and (expr_name in BLINK_NAMES):
 			continue
-		if blocked_look_at and (expr_name in ["lookUp", "lookDown", "lookLeft", "lookRight", "look_up", "look_down", "look_left", "look_right"]):
+		if blocked_look_at and (expr_name in LOOK_AT_NAMES):
 			continue
-		if blocked_mouth and (expr_name in ["aa", "ih", "ou", "ee", "oh"]):
+		if blocked_mouth and (expr_name in MOUTH_NAMES):
+			continue
+
+		# Attenuate procedural targets under an active "blend" override. Per the spec's
+		# isBinary interaction rules, a binary target must snap fully to 0 the instant it
+		# receives ANY attenuation - fractional output is not permitted for isBinary
+		# expressions, only their block/pass-through extremes.
+		if expr_name in BLINK_NAMES and blend_factor_blink < 1.0:
+			w = 0.0 if data.is_binary else w * blend_factor_blink
+		elif expr_name in LOOK_AT_NAMES and blend_factor_look_at < 1.0:
+			w = 0.0 if data.is_binary else w * blend_factor_look_at
+		elif expr_name in MOUTH_NAMES and blend_factor_mouth < 1.0:
+			w = 0.0 if data.is_binary else w * blend_factor_mouth
+
+		if w <= 0.0:
 			continue
 
 		for bind: RuntimeMorphBind in data.morph_binds:
