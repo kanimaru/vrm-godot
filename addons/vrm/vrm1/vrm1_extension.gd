@@ -540,6 +540,9 @@ func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> Dictionary:
 			p["alpha_mode"] = VrmMtoonBuilder.AlphaMode.OPAQUE
 	p["alpha_cutoff"] = mat_json.get("alphaCutoff", 0.5)
 	p["double_sided"] = mat_json.get("doubleSided", false)
+	# Offsets draw order for layered transparent materials (e.g. eyelashes over face).
+	# Per spec only meaningful when alphaMode is BLEND; authored range is [-9, +9].
+	p["render_queue_offset"] = ext.get("renderQueueOffsetNumber", 0)
 
 	# --- VRMC_materials_mtoon extension fields ---
 	# Shade

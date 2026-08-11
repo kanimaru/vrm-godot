@@ -97,6 +97,11 @@ static func _apply_all(mat: ShaderMaterial, p: Dictionary) -> void:
 	mat.set_shader_parameter("_AlphaCutoutEnable", cutout_enable)
 	mat.set_shader_parameter("_Cutoff", float(p.get("alpha_cutoff", 0.5)))
 
+	# render_priority (not a shader uniform - a base Material property): offsets draw
+	# order for transparent materials, only meaningful when alpha_mode is BLEND per spec.
+	# Godot clamps to [-128, 127], well within the spec's authored [-9, +9] range.
+	mat.render_priority = int(p.get("render_queue_offset", 0))
+
 	# --- Base color / Lit ---
 	var base_color: Color = p.get("base_color", Color.WHITE)
 	mat.set_shader_parameter("_Color", base_color)

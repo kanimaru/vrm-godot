@@ -216,3 +216,38 @@ func test_build_body_uv_animation_scroll() -> void:
 	assert_eq(mat.get_shader_parameter("_UvAnimScrollX"), 0.5)
 	assert_eq(mat.get_shader_parameter("_UvAnimScrollY"), -0.25)
 	assert_eq(mat.get_shader_parameter("_UvAnimRotation"), 1.0)
+
+
+# ---------------------------------------------------------------------------
+# render_queue_offset -> Material.render_priority
+# ---------------------------------------------------------------------------
+
+func test_build_body_render_priority_default_is_zero() -> void:
+	var mat: ShaderMaterial = VrmMtoonBuilder.build_body({})
+
+	assert_eq(mat.render_priority, 0)
+
+
+func test_build_body_render_priority_positive_offset() -> void:
+	var mat: ShaderMaterial = VrmMtoonBuilder.build_body({
+		"render_queue_offset": 9,
+	})
+
+	assert_eq(mat.render_priority, 9)
+
+
+func test_build_body_render_priority_negative_offset() -> void:
+	var mat: ShaderMaterial = VrmMtoonBuilder.build_body({
+		"render_queue_offset": -9,
+	})
+
+	assert_eq(mat.render_priority, -9)
+
+
+func test_build_outline_also_receives_render_priority() -> void:
+	var mat: ShaderMaterial = VrmMtoonBuilder.build_outline({
+		"outline_width_mode": VrmMtoonBuilder.OutlineWidthMode.WORLD,
+		"render_queue_offset": 3,
+	})
+
+	assert_eq(mat.render_priority, 3)

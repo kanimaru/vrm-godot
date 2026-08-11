@@ -85,6 +85,22 @@ func test_alpha_cutoff_explicit() -> void:
 
 
 # ---------------------------------------------------------------------------
+# renderQueueOffsetNumber
+# ---------------------------------------------------------------------------
+
+func test_render_queue_offset_default_is_zero() -> void:
+	var p: Dictionary = _parse(_make_mat())
+
+	assert_eq(p["render_queue_offset"], 0)
+
+
+func test_render_queue_offset_explicit() -> void:
+	var p: Dictionary = _parse(_make_mat({ "renderQueueOffsetNumber": -5 }))
+
+	assert_eq(p["render_queue_offset"], -5)
+
+
+# ---------------------------------------------------------------------------
 # Double-sided
 # ---------------------------------------------------------------------------
 
