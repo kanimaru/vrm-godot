@@ -224,6 +224,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			var bone_name: String = VrmSceneComposer.resolve_node_name(gltf_nodes[bone_data.node])
 			humanoid_bone_map[bone_data.bone.to_lower()] = bone_name
 		VRMUtil.set_humanoid_bone_map(root, humanoid_bone_map)
+		VrmSceneComposer.validate_required_humanoid_bones("Vrm0Extension", humanoid_bone_map, VrmConstants.VRM0_REQUIRED_HUMANOID_BONES)
 
 	VrmSceneComposer.attach_retargeter(root)
 

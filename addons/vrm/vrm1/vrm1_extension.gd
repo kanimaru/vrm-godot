@@ -393,9 +393,9 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 
 	# Store a vrm_role -> actual_bone_name lookup on the root so VrmaAnimationLibraryBuilder
 	# can retarget animations to this avatar's real bone names at import/runtime.
+	var humanoid_bone_map: Dictionary[String, String] = {}
 	if vrm_top_level.humanoid != null:
 		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
-		var humanoid_bone_map: Dictionary[String, String] = {}
 		for vrm_bone_name: String in vrm_top_level.humanoid.human_bones:
 			var bone_data: Vrm1HumanoidBone = vrm_top_level.humanoid.human_bones[vrm_bone_name]
 			if bone_data.node < 0 or bone_data.node >= gltf_nodes.size():
@@ -403,11 +403,14 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 			var bone_name: String = VrmSceneComposer.resolve_node_name(gltf_nodes[bone_data.node])
 			humanoid_bone_map[vrm_bone_name.to_lower()] = bone_name
 		VRMUtil.set_humanoid_bone_map(root, humanoid_bone_map)
+		VrmSceneComposer.validate_required_humanoid_bones("Vrm1Extension", humanoid_bone_map, VrmConstants.VRM1_REQUIRED_HUMANOID_BONES)
 
 	VrmSceneComposer.attach_retargeter(root)
 
 	var skeleton: Skeleton3D = VRMUtil.find_skeleton(root)
 	VrmSceneComposer.rename_skeleton_to_general(skeleton)
+	if skeleton != null and not humanoid_bone_map.is_empty():
+		VrmSceneComposer.validate_humanoid_bone_scales("Vrm1Extension", skeleton, humanoid_bone_map)
 
 	var node_constraints_variant: Variant = state.get_additional_data("vrm1_node_constraints")
 	var has_node_constraints: bool = node_constraints_variant is Dictionary and not (node_constraints_variant as Dictionary).is_empty()

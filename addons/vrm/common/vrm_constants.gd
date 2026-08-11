@@ -24,6 +24,24 @@ const BONE_JAW = "jaw"
 const FIRST_PERSON_ONLY_LAYER = 2
 const THIRD_PERSON_ONLY_LAYER = 3
 
+# Required humanoid bones. Both lists are per-spec (docs/VRM_0.0/README.md's humanoid
+# bone table; docs/VRMC_vrm-1.0/humanoid.md's "List of humanoid bones") - VRM0 additionally
+# requires neck and chest, which VRM1 leaves optional.
+const VRM0_REQUIRED_HUMANOID_BONES: PackedStringArray = [
+	"hips", "spine", "chest", "neck", "head",
+	"leftUpperLeg", "leftLowerLeg", "leftFoot",
+	"rightUpperLeg", "rightLowerLeg", "rightFoot",
+	"leftUpperArm", "leftLowerArm", "leftHand",
+	"rightUpperArm", "rightLowerArm", "rightHand",
+]
+const VRM1_REQUIRED_HUMANOID_BONES: PackedStringArray = [
+	"hips", "spine", "head",
+	"leftUpperLeg", "leftLowerLeg", "leftFoot",
+	"rightUpperLeg", "rightLowerLeg", "rightFoot",
+	"leftUpperArm", "leftLowerArm", "leftHand",
+	"rightUpperArm", "rightLowerArm", "rightHand",
+]
+
 # Extension keys
 const EXT_VRM0 = "VRM"
 const EXT_VRM1_CORE = "VRMC_vrm"

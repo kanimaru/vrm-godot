@@ -276,3 +276,102 @@ func test_resolve_scene_node_returns_null_when_no_matching_child() -> void:
 	add_child_autofree(root)
 
 	assert_null(VrmSceneComposer.resolve_scene_node(state, root, 0))
+
+
+# ---------------------------------------------------------------------------
+# validate_required_humanoid_bones
+# ---------------------------------------------------------------------------
+
+func test_validate_required_humanoid_bones_returns_empty_when_all_present() -> void:
+	var human_bone_map: Dictionary = {"hips": "Hips", "head": "Head"}
+	var required: PackedStringArray = PackedStringArray(["hips", "head"])
+
+	var missing: PackedStringArray = VrmSceneComposer.validate_required_humanoid_bones("Test", human_bone_map, required)
+
+	assert_eq(missing, PackedStringArray())
+
+
+func test_validate_required_humanoid_bones_lists_missing_roles() -> void:
+	var human_bone_map: Dictionary = {"hips": "Hips"}
+	var required: PackedStringArray = PackedStringArray(["hips", "head", "leftUpperArm"])
+
+	var missing: PackedStringArray = VrmSceneComposer.validate_required_humanoid_bones("Test", human_bone_map, required)
+
+	assert_eq(missing, PackedStringArray(["head", "leftUpperArm"]))
+
+
+func test_validate_required_humanoid_bones_is_case_insensitive_against_the_map() -> void:
+	# human_bone_map is keyed by role.to_lower() (the convention both extensions use); the
+	# required-role list itself is written in camelCase to match spec spelling, so the
+	# comparison must lower it too rather than expecting the map's exact casing.
+	var human_bone_map: Dictionary = {"leftupperarm": "UpperArm.L"}
+	var required: PackedStringArray = PackedStringArray(["leftUpperArm"])
+
+	var missing: PackedStringArray = VrmSceneComposer.validate_required_humanoid_bones("Test", human_bone_map, required)
+
+	assert_eq(missing, PackedStringArray())
+
+
+func test_validate_required_humanoid_bones_empty_map_reports_everything_missing() -> void:
+	var required: PackedStringArray = PackedStringArray(["hips", "head"])
+
+	var missing: PackedStringArray = VrmSceneComposer.validate_required_humanoid_bones("Test", {}, required)
+
+	assert_eq(missing, required)
+
+
+# ---------------------------------------------------------------------------
+# validate_humanoid_bone_scales
+# ---------------------------------------------------------------------------
+
+func _skeleton_with_bone(bone_name: String, basis: Basis) -> Skeleton3D:
+	var skeleton := Skeleton3D.new()
+	var idx := skeleton.add_bone(bone_name)
+	skeleton.set_bone_rest(idx, Transform3D(basis, Vector3.ZERO))
+	return skeleton
+
+
+func test_validate_humanoid_bone_scales_passes_uniform_positive_scale() -> void:
+	var skeleton := _skeleton_with_bone("Hips", Basis.IDENTITY.scaled(Vector3(1, 1, 1)))
+	autofree(skeleton)
+	var human_bone_map: Dictionary = {"hips": "Hips"}
+
+	var offending: PackedStringArray = VrmSceneComposer.validate_humanoid_bone_scales("Test", skeleton, human_bone_map)
+
+	assert_eq(offending, PackedStringArray())
+
+
+func test_validate_humanoid_bone_scales_flags_non_uniform_scale() -> void:
+	var skeleton := _skeleton_with_bone("Hips", Basis.IDENTITY.scaled(Vector3(1, 2, 1)))
+	autofree(skeleton)
+	var human_bone_map: Dictionary = {"hips": "Hips"}
+
+	var offending: PackedStringArray = VrmSceneComposer.validate_humanoid_bone_scales("Test", skeleton, human_bone_map)
+
+	assert_eq(offending, PackedStringArray(["Hips"]))
+
+
+func test_validate_humanoid_bone_scales_flags_non_positive_scale() -> void:
+	var skeleton := _skeleton_with_bone("Hips", Basis.IDENTITY.scaled(Vector3(-1, -1, -1)))
+	autofree(skeleton)
+	var human_bone_map: Dictionary = {"hips": "Hips"}
+
+	var offending: PackedStringArray = VrmSceneComposer.validate_humanoid_bone_scales("Test", skeleton, human_bone_map)
+
+	assert_eq(offending, PackedStringArray(["Hips"]))
+
+
+func test_validate_humanoid_bone_scales_skips_unresolved_bone_names() -> void:
+	var skeleton := _skeleton_with_bone("Hips", Basis.IDENTITY)
+	autofree(skeleton)
+	var human_bone_map: Dictionary = {"hips": "Hips", "head": "DoesNotExist"}
+
+	var offending: PackedStringArray = VrmSceneComposer.validate_humanoid_bone_scales("Test", skeleton, human_bone_map)
+
+	assert_eq(offending, PackedStringArray())
+
+
+func test_validate_humanoid_bone_scales_returns_empty_for_null_skeleton() -> void:
+	var offending: PackedStringArray = VrmSceneComposer.validate_humanoid_bone_scales("Test", null, {"hips": "Hips"})
+
+	assert_eq(offending, PackedStringArray())

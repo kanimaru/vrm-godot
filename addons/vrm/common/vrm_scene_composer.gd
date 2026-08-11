@@ -36,6 +36,50 @@ static func resolve_all_node_names(state: GLTFState) -> Dictionary[int, String]:
 	return node_names
 
 
+## Warns (does not block import) if any of required_roles is missing from human_bone_map's
+## keys - the vrm_role.to_lower() -> actual_bone_name map both Vrm0Extension and
+## Vrm1Extension build in _import_post and store via VRMUtil.set_humanoid_bone_map(). A
+## missing required bone means the avatar imports with a silently incomplete humanoid rig;
+## retargeting (VRMA/VMD/BVH), IK, and node constraints that rely on a role being resolvable
+## will quietly no-op instead of erroring. Returns the list of missing role names (their
+## original casing, not lowered) so callers - tests included - can inspect it without
+## needing to intercept push_warning.
+static func validate_required_humanoid_bones(context: String, human_bone_map: Dictionary, required_roles: PackedStringArray) -> PackedStringArray:
+	var missing: PackedStringArray = PackedStringArray()
+	for role: String in required_roles:
+		if not human_bone_map.has(role.to_lower()):
+			missing.append(role)
+	if not missing.is_empty():
+		push_warning("%s: missing required humanoid bone(s) [%s] - retargeting, IK, and spring bones may not work correctly" % [context, ", ".join(missing)])
+	return missing
+
+
+## Warns (does not block import) for any humanoid bone whose glTF-authored rest transform
+## has a non-uniform or non-positive scale, violating VRM1's tpose.md "Definition 2.1: All
+## node transforms are on a positive uniform scale." Scoped to humanoid bones rather than
+## every node in the file (the spec's literal wording), since that's the subset this
+## plugin's retargeting/IK/spring bone math actually depends on and checking unrelated prop
+## nodes would just be noise. Not called for VRM0, which has no equivalent formal T-pose
+## requirement - its 0.x-era rest poses commonly carry non-trivial rotations/scales that
+## are normal for that generation, not a defect.
+static func validate_humanoid_bone_scales(context: String, skeleton: Skeleton3D, human_bone_map: Dictionary) -> PackedStringArray:
+	var offending: PackedStringArray = PackedStringArray()
+	if skeleton == null:
+		return offending
+	for role: String in human_bone_map:
+		var bone_name: String = human_bone_map[role]
+		var bone_idx: int = skeleton.find_bone(bone_name)
+		if bone_idx == -1:
+			continue
+		var scale: Vector3 = skeleton.get_bone_rest(bone_idx).basis.get_scale()
+		var is_uniform: bool = is_equal_approx(scale.x, scale.y) and is_equal_approx(scale.y, scale.z)
+		if not is_uniform or scale.x <= 0.0:
+			offending.append(bone_name)
+	if not offending.is_empty():
+		push_warning("%s: humanoid bone(s) [%s] have a non-uniform or non-positive rest scale, violating VRM1's T-pose spec (tpose.md Definition 2.1) - animation retargeting may look incorrect" % [context, ", ".join(offending)])
+	return offending
+
+
 ## Resolves a glTF node index to its scene node, preferring GLTFState's own mapping (built
 ## during import) and falling back to a name-based find_child (needed once the scene has
 ## already round-tripped through save/load, where GLTFState's node cache no longer applies).
