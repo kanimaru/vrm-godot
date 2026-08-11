@@ -122,7 +122,9 @@ static func _apply_all(mat: ShaderMaterial, p: Dictionary) -> void:
 	mat.set_shader_parameter("_ShadeToony", float(p.get("shading_toony_factor", 0.9)))
 	if p.has("shading_shift_texture") and p["shading_shift_texture"] != null:
 		mat.set_shader_parameter("_ShadingGradeTexture", p["shading_shift_texture"])
-		mat.set_shader_parameter("_ShadingGradeRate", 1.0)
+		# shadingShiftTextureInfo.scale: how much this texture contributes to the shading
+		# boundary shift (spec default 1.0, matching _ShadingGradeRate's own shader default).
+		mat.set_shader_parameter("_ShadingGradeRate", float(p.get("shading_shift_texture_scale", 1.0)))
 	if p.has("receive_shadow_texture") and p["receive_shadow_texture"] != null:
 		mat.set_shader_parameter("_ReceiveShadowTexture", p["receive_shadow_texture"])
 		mat.set_shader_parameter("_ReceiveShadowRate", 1.0)

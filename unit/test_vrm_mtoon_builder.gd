@@ -251,3 +251,36 @@ func test_build_outline_also_receives_render_priority() -> void:
 	})
 
 	assert_eq(mat.render_priority, 3)
+
+
+# ---------------------------------------------------------------------------
+# shading_shift_texture_scale -> _ShadingGradeRate
+# ---------------------------------------------------------------------------
+
+func test_shading_grade_rate_defaults_to_one_when_scale_absent() -> void:
+	var mat: ShaderMaterial = VrmMtoonBuilder.build_body({
+		"shading_shift_texture": PlaceholderTexture2D.new(),
+	})
+
+	assert_eq(mat.get_shader_parameter("_ShadingGradeRate"), 1.0)
+
+
+func test_shading_grade_rate_uses_parsed_scale() -> void:
+	var mat: ShaderMaterial = VrmMtoonBuilder.build_body({
+		"shading_shift_texture": PlaceholderTexture2D.new(),
+		"shading_shift_texture_scale": 0.35,
+	})
+
+	assert_eq(mat.get_shader_parameter("_ShadingGradeRate"), 0.35)
+
+
+func test_shading_grade_rate_untouched_when_no_shading_shift_texture() -> void:
+	# No shading_shift_texture key means the whole branch is skipped, so the material
+	# never gets an explicit _ShadingGradeRate override - it falls through to the shader's
+	# own declared default (1.0), which get_shader_parameter reports as null (it only
+	# returns instance overrides, not shader-declared defaults).
+	var mat: ShaderMaterial = VrmMtoonBuilder.build_body({
+		"shading_shift_texture_scale": 0.35,
+	})
+
+	assert_null(mat.get_shader_parameter("_ShadingGradeRate"))

@@ -214,6 +214,28 @@ func test_shading_values_explicit() -> void:
 	assert_eq(p["shading_toony_factor"], 0.8)
 
 
+func test_shading_shift_texture_scale_default_when_texture_absent() -> void:
+	var p: Dictionary = _parse(_make_mat())
+
+	assert_false(p.has("shading_shift_texture_scale"), "scale is a sub-property of the texture info - it should only appear when the texture itself is present")
+
+
+func test_shading_shift_texture_scale_defaults_to_one_when_texture_present_without_scale() -> void:
+	var p: Dictionary = _parse(_make_mat({
+		"shadingShiftTexture": {},
+	}))
+
+	assert_eq(p["shading_shift_texture_scale"], 1.0)
+
+
+func test_shading_shift_texture_scale_explicit() -> void:
+	var p: Dictionary = _parse(_make_mat({
+		"shadingShiftTexture": { "scale": 0.35 },
+	}))
+
+	assert_eq(p["shading_shift_texture_scale"], 0.35)
+
+
 # ---------------------------------------------------------------------------
 # GI equalization factor
 # ---------------------------------------------------------------------------

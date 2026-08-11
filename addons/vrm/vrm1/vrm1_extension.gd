@@ -557,6 +557,9 @@ func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> Dictionary:
 	p["shading_toony_factor"] = ext.get("shadingToonyFactor", 0.9)
 	if ext.has("shadingShiftTexture"):
 		p["shading_shift_texture"] = _resolve_gltf_texture(ext["shadingShiftTexture"], state)
+		# scale: "the scalar parameter which specifies the contribution of the texture to
+		# the shading shift value" (shadingShiftTextureInfo.scale) - default 1.0 per spec.
+		p["shading_shift_texture_scale"] = ext["shadingShiftTexture"].get("scale", 1.0)
 
 	# Normal map (from top-level glTF)
 	if mat_json.has("normalTexture"):
