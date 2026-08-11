@@ -40,6 +40,8 @@ func _build_meta_section(meta: Vrm0Meta) -> void:
 	# Info content
 	var info_group := UI.make_group_container()
 	var info_content := UI.get_group_content(info_group)
+	if meta.thumbnail_texture != null:
+		info_content.add_child(UI.make_thumbnail(meta.thumbnail_texture))
 	info_content.add_child(UI.make_row("Title", meta.title))
 	info_content.add_child(UI.make_row("Author", meta.author))
 	info_content.add_child(UI.make_row("Version", meta.version))

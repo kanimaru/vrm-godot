@@ -63,6 +63,49 @@ func test_parse_meta_missing_optional_fields_use_defaults() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Thumbnail resolution (_import_post_parse wiring; meta.texture indexes gltf.images
+# directly here - same convention _resolve_vrm0_texture already uses for every other
+# VRM0 texture property - resolved via VrmSceneComposer.resolve_image_index since
+# GLTFState isn't available inside _parse_meta itself)
+# ---------------------------------------------------------------------------
+
+func test_import_post_parse_resolves_thumbnail_texture_from_images() -> void:
+	var json: Dictionary = {
+		"extensions": {
+			"VRM": {"meta": {"title": "Test Avatar", "texture": 1}},
+		},
+	}
+	var state := GLTFState.new()
+	state.json = json
+	var img0 := PlaceholderTexture2D.new()
+	var img1 := PlaceholderTexture2D.new()
+	var images: Array[Texture2D] = [img0, img1]
+	state.images = images
+
+	_ext.call("_import_post_parse", state)
+
+	var vrm_top_level: Vrm0TopLevel = state.get_additional_data("vrm0")
+	assert_eq(vrm_top_level.meta.thumbnail_texture, img1)
+
+
+func test_import_post_parse_leaves_thumbnail_null_when_unset() -> void:
+	var json: Dictionary = {
+		"extensions": {
+			"VRM": {"meta": {"title": "Test Avatar"}},
+		},
+	}
+	var state := GLTFState.new()
+	state.json = json
+	var images: Array[Texture2D] = [PlaceholderTexture2D.new()]
+	state.images = images
+
+	_ext.call("_import_post_parse", state)
+
+	var vrm_top_level: Vrm0TopLevel = state.get_additional_data("vrm0")
+	assert_null(vrm_top_level.meta.thumbnail_texture)
+
+
+# ---------------------------------------------------------------------------
 # _parse_humanoid
 # ---------------------------------------------------------------------------
 

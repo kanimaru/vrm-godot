@@ -10,6 +10,9 @@ class_name Vrm1Meta
 @export var references: PackedStringArray = PackedStringArray()
 @export var third_party_licenses: String = ""
 @export var thumbnail_image: int = -1
+## Resolved by Vrm1Extension._import_post_parse (needs GLTFState, unavailable at parse
+## time) - not part of the VRM1 JSON itself.
+var thumbnail_texture: Texture2D = null
 @export var license_url: String = "https://vrm.dev/licenses/1.0/"
 @export var avatar_permission: String = "onlyAuthor"
 @export var allow_excessively_violent_usage: bool = false

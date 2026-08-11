@@ -116,6 +116,17 @@ static func make_bool_row(label_text: String, value: bool, true_label: String = 
 	return hbox
 
 
+## Creates a square, centered thumbnail preview for meta.thumbnailImage/meta.texture.
+static func make_thumbnail(texture: Texture2D, size: int = 96) -> TextureRect:
+	var rect := TextureRect.new()
+	rect.texture = texture
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.custom_minimum_size = Vector2(size, size)
+	rect.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	return rect
+
+
 ## Adds a thin horizontal separator.
 static func make_separator() -> HSeparator:
 	var sep := HSeparator.new()

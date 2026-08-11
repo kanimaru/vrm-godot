@@ -375,3 +375,39 @@ func test_validate_humanoid_bone_scales_returns_empty_for_null_skeleton() -> voi
 	var offending: PackedStringArray = VrmSceneComposer.validate_humanoid_bone_scales("Test", null, {"hips": "Hips"})
 
 	assert_eq(offending, PackedStringArray())
+
+
+# ---------------------------------------------------------------------------
+# resolve_image_index
+# ---------------------------------------------------------------------------
+
+func _state_with_images(count: int) -> GLTFState:
+	var state := GLTFState.new()
+	var images: Array[Texture2D] = []
+	for i in range(count):
+		var img := PlaceholderTexture2D.new()
+		img.size = Vector2(4, 4)
+		images.append(img)
+	state.images = images
+	return state
+
+
+func test_resolve_image_index_returns_the_image_at_that_index() -> void:
+	var state := _state_with_images(3)
+	var images: Array[Texture2D] = state.get_images()
+
+	var resolved: Texture2D = VrmSceneComposer.resolve_image_index(1, state)
+
+	assert_eq(resolved, images[1])
+
+
+func test_resolve_image_index_returns_null_for_unset_index() -> void:
+	var state := _state_with_images(3)
+
+	assert_null(VrmSceneComposer.resolve_image_index(-1, state))
+
+
+func test_resolve_image_index_returns_null_for_out_of_range_index() -> void:
+	var state := _state_with_images(2)
+
+	assert_null(VrmSceneComposer.resolve_image_index(5, state))

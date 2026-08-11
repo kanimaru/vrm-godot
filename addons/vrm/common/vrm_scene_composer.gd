@@ -80,6 +80,22 @@ static func validate_humanoid_bone_scales(context: String, skeleton: Skeleton3D,
 	return offending
 
 
+## Resolves a raw glTF image index to a Texture2D, for meta thumbnails. VRM1's
+## thumbnailImage is spec-documented as indexing gltf.images directly (not gltf.textures,
+## which would need an extra textures[n].src_image indirection like material textures do -
+## see _resolve_gltf_texture in each extension). VRM0's meta.texture is treated the same
+## way here for consistency with how this codebase already resolves every other VRM0
+## texture property (Vrm0Extension._resolve_vrm0_texture uses the same direct-image-index
+## read). Returns null if index is unset (-1) or out of range.
+static func resolve_image_index(image_index: int, state: GLTFState) -> Texture2D:
+	if image_index < 0:
+		return null
+	var images: Array[Texture2D] = state.get_images()
+	if image_index >= images.size():
+		return null
+	return images[image_index]
+
+
 ## Resolves a glTF node index to its scene node, preferring GLTFState's own mapping (built
 ## during import) and falling back to a name-based find_child (needed once the scene has
 ## already round-tripped through save/load, where GLTFState's node cache no longer applies).

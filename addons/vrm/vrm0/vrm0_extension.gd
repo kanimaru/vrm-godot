@@ -38,7 +38,8 @@ func _import_post_parse(state: GLTFState) -> Error:
 	
 	if vrm_dict.has("meta"):
 		vrm_top_level.meta = _parse_meta(vrm_dict["meta"])
-	
+		vrm_top_level.meta.thumbnail_texture = VrmSceneComposer.resolve_image_index(vrm_top_level.meta.texture, state)
+
 	if vrm_dict.has("humanoid"):
 		vrm_top_level.humanoid = _parse_humanoid(vrm_dict["humanoid"])
 		
