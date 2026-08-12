@@ -411,3 +411,151 @@ func test_resolve_image_index_returns_null_for_out_of_range_index() -> void:
 	var state := _state_with_images(2)
 
 	assert_null(VrmSceneComposer.resolve_image_index(5, state))
+
+
+# ---------------------------------------------------------------------------
+# parse_material_variants (KHR_materials_variants)
+# ---------------------------------------------------------------------------
+
+func _make_material(name: String) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.resource_name = name
+	return mat
+
+
+func _variants_json(mappings_ext: Dictionary = {}) -> Dictionary:
+	return {
+		"extensions": {
+			"KHR_materials_variants": {
+				"variants": [{"name": "Default"}, {"name": "Winter"}],
+			},
+		},
+		"meshes": [
+			{
+				"primitives": [
+					{
+						"material": 0,
+						"extensions": {"KHR_materials_variants": mappings_ext},
+					},
+				],
+			},
+		],
+	}
+
+
+func test_parse_material_variants_returns_empty_when_extension_absent() -> void:
+	var state := GLTFState.new()
+	state.json = {"meshes": []}
+
+	var parsed: Dictionary = VrmSceneComposer.parse_material_variants(state)
+
+	assert_true((parsed["variant_names"] as Array).is_empty())
+	assert_true((parsed["mappings_by_default_name"] as Dictionary).is_empty())
+
+
+func test_parse_material_variants_reads_variant_names() -> void:
+	var state := GLTFState.new()
+	state.json = {"extensions": {"KHR_materials_variants": {"variants": [{"name": "A"}, {"name": "B"}]}}}
+	var materials: Array[Material] = []
+	state.materials = materials
+
+	var parsed: Dictionary = VrmSceneComposer.parse_material_variants(state)
+
+	assert_eq(parsed["variant_names"], (["A", "B"] as Array[String]))
+
+
+func test_parse_material_variants_builds_mapping_by_default_material_name() -> void:
+	var state := GLTFState.new()
+	state.json = _variants_json({
+		"mappings": [
+			{"material": 1, "variants": [0]},
+			{"material": 2, "variants": [1]},
+		],
+	})
+	var materials: Array[Material] = [_make_material("Outfit_Default"), _make_material("Outfit_A"), _make_material("Outfit_B")]
+	state.materials = materials
+
+	var parsed: Dictionary = VrmSceneComposer.parse_material_variants(state)
+	var mappings: Dictionary = parsed["mappings_by_default_name"]
+
+	assert_true(mappings.has("Outfit_Default"))
+	assert_eq(mappings["Outfit_Default"], {0: "Outfit_A", 1: "Outfit_B"})
+
+
+func test_parse_material_variants_one_mapping_can_cover_multiple_variants() -> void:
+	var state := GLTFState.new()
+	state.json = _variants_json({
+		"mappings": [
+			{"material": 1, "variants": [0, 1]},
+		],
+	})
+	var materials: Array[Material] = [_make_material("Outfit_Default"), _make_material("Outfit_A")]
+	state.materials = materials
+
+	var parsed: Dictionary = VrmSceneComposer.parse_material_variants(state)
+	var mappings: Dictionary = parsed["mappings_by_default_name"]
+
+	assert_eq(mappings["Outfit_Default"], {0: "Outfit_A", 1: "Outfit_A"})
+
+
+func test_parse_material_variants_skips_primitives_without_the_extension() -> void:
+	var state := GLTFState.new()
+	state.json = {
+		"extensions": {"KHR_materials_variants": {"variants": [{"name": "A"}]}},
+		"meshes": [{"primitives": [{"material": 0}]}],  # no per-primitive extensions block
+	}
+	var materials: Array[Material] = [_make_material("Plain")]
+	state.materials = materials
+
+	var parsed: Dictionary = VrmSceneComposer.parse_material_variants(state)
+
+	assert_true((parsed["mappings_by_default_name"] as Dictionary).is_empty())
+
+
+# ---------------------------------------------------------------------------
+# build_material_variant_entries
+# ---------------------------------------------------------------------------
+
+func test_build_material_variant_entries_resolves_live_materials() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+
+	var default_mat := _make_material("Outfit_Default")
+	var mesh_inst := _make_mesh_with_material(default_mat)
+	root.add_child(mesh_inst)
+
+	# The variant's target material must already exist live in the scene (as
+	# find_material_by_name expects post-MToon-swap) for resolution to succeed.
+	var target_mat := _make_material("Outfit_A")
+	var target_mesh := _make_mesh_with_material(target_mat)
+	root.add_child(target_mesh)
+	target_mesh.set_surface_override_material(0, target_mat)
+
+	var mappings_by_default_name: Dictionary = {"Outfit_Default": {0: "Outfit_A"}}
+
+	var entries: Array[VrmMaterialVariantMapping] = VrmSceneComposer.build_material_variant_entries(root, mappings_by_default_name)
+
+	assert_eq(entries.size(), 1)
+	assert_eq(entries[0].mesh_instance, mesh_inst)
+	assert_eq(entries[0].surface, 0)
+	assert_eq(entries[0].variant_materials[0], target_mat)
+
+
+func test_build_material_variant_entries_skips_surfaces_with_no_mapping() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var mesh_inst := _make_mesh_with_material(_make_material("Unrelated"))
+	root.add_child(mesh_inst)
+
+	var entries: Array[VrmMaterialVariantMapping] = VrmSceneComposer.build_material_variant_entries(root, {"Outfit_Default": {0: "Outfit_A"}})
+
+	assert_true(entries.is_empty())
+
+
+func test_build_material_variant_entries_returns_empty_for_empty_mappings() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+
+	var entries: Array[VrmMaterialVariantMapping] = VrmSceneComposer.build_material_variant_entries(root, {})
+
+	assert_true(entries.is_empty())

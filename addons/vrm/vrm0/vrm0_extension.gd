@@ -242,6 +242,7 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	# color/UV binds resolve their target by walking the live scene tree, and need to find
 	# the actual MToon ShaderMaterial rather than the pre-swap glTF-imported one.
 	VrmSceneComposer.apply_mtoon_materials(root, state.get_additional_data(&"vrm0_mtoon"), state)
+	VrmSceneComposer.attach_material_variant_controller(root, state)
 
 	if vrm_top_level.blend_shape_master != null:
 		var expr_controller: Vrm0ExpressionController = Vrm0ExpressionController.new()
