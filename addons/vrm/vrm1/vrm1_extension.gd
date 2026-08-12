@@ -567,7 +567,15 @@ func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> Dictionary:
 		p["normal_map_scale"] = mat_json["normalTexture"].get("scale", 1.0)
 
 	# GI
-	p["indirect_light_intensity"] = ext.get("giEqualizationFactor", 0.9)
+	# NOTE: VRMC_materials_mtoon's giEqualizationFactor (blend between raw and up/down-averaged
+	# GI, spec default 0.9) is intentionally NOT mapped to the shader's _IndirectLightIntensity
+	# uniform. That uniform is this addon's own "GI Intensity" knob (default 0.1, a brightness
+	# scaler for its polled-ambient approximation, see MtoonController) - a different concept
+	# with an incompatible value range. Feeding the spec's 0.9 default into it previously made
+	# indirect lighting far more intense/normal-flattened than the shader author intended for
+	# every VRM1 import. Godot has no per-direction GI sampling hook this addon can use to
+	# implement giEqualizationFactor's actual semantics, so it's left unmapped rather than
+	# wired to the wrong knob; _IndirectLightIntensity keeps the shader's own tuned default.
 
 	# MatCap
 	if ext.has("matcapFactor"):

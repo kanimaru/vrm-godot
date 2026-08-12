@@ -142,17 +142,18 @@ vec3 UnpackScaleNormal(vec4 normalmap, float scale) {
 }
 
 vec3 calculateLighting(vec2 mainUv, float dotNL, float lightAttenuation, vec4 shade_arg, vec4 lit_arg, vec3 lightColor, out vec3 col, out float lightIntensity) {
-	// Decide albedo color rate from Direct Light
-	float shadingGrade = 1.0 - _ShadingGradeRate * (1.0 - texture(_ShadingGradeTexture, mainUv).r);
-	lightIntensity = dotNL; // [-1, +1]
-	lightIntensity = lightIntensity * 0.5 + 0.5; // from [-1, +1] to [0, 1]
-	lightIntensity = lightIntensity * lightAttenuation; // receive shadow
-	lightIntensity = lightIntensity * shadingGrade; // darker
-	lightIntensity = lightIntensity * 2.0 - 1.0; // from [0, 1] to [-1, +1]
-	// tooned. mapping from [minIntensityThreshold, maxIntensityThreshold] to [0, 1]
-	float maxIntensityThreshold = mix(1, _ShadeShift, _ShadeToony);
-	float minIntensityThreshold = _ShadeShift;
-	lightIntensity = clamp((lightIntensity - minIntensityThreshold) / max(EPS_COL, (maxIntensityThreshold - minIntensityThreshold)),0.0,1.0);
+	// VRMC_materials_mtoon-1.0 "Shading Shift" implementation pseudocode: the shift factor
+	// and shiftTexture (sampled here via _ShadingGradeRate/_ShadingGradeTexture, this addon's
+	// pre-1.0-spec uniform names) are added directly to dot(N,L) before the toony linearstep,
+	// not used as a post-hoc multiplicative darkening term.
+	float shading = dotNL + _ShadeShift + texture(_ShadingGradeTexture, mainUv).r * _ShadingGradeRate;
+	float minIntensityThreshold = -1.0 + _ShadeToony;
+	float maxIntensityThreshold = 1.0 - _ShadeToony;
+	lightIntensity = clamp((shading - minIntensityThreshold) / max(EPS_COL, (maxIntensityThreshold - minIntensityThreshold)),0.0,1.0);
+	// Godot-specific: receive-shadow darkening is folded in after the spec-accurate toony
+	// remap above, rather than into the dot(N,L) term, so it doesn't distort the shift/toony
+	// curve the spec defines.
+	lightIntensity = lightIntensity * lightAttenuation;
 
 	col = mix(shade_arg.rgb, lit_arg.rgb, lightIntensity);
 	// Direct Light
@@ -269,7 +270,10 @@ void fragment() {
 	rim = pow(clamp(1.0 - dot(viewNormal, viewView) + _RimLift, 0.0, 1.0), max(_RimFresnelPower, 0.001)) * _RimColor.rgb;
 
 	// additive matcap
-	vec3 viewCameraUp = vec3(0.0,1.0,0.0);//normalize(INV_VIEW_MATRIX[1].xyz); // FIXME!!
+	// World-up transformed into view space (same pattern as up_normal below), so the matcap
+	// basis stays anchored to the world/object instead of a bare view-space (0,1,0), which
+	// would make the matcap swirl across the surface whenever the camera rolls.
+	vec3 viewCameraUp = normalize(mat3(VIEW_MATRIX) * vec3(0.0, 1.0, 0.0));
 	vec3 viewViewUp = normalize(viewCameraUp - viewView * dot(viewView, viewCameraUp));
 	vec3 viewViewRight = normalize(cross(viewView, viewViewUp));
 	vec2 matcapUv = vec2(-dot(viewViewRight, viewNormal), -dot(viewViewUp, viewNormal)) * 0.5 + 0.5;

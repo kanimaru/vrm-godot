@@ -239,17 +239,21 @@ func test_shading_shift_texture_scale_explicit() -> void:
 # ---------------------------------------------------------------------------
 # GI equalization factor
 # ---------------------------------------------------------------------------
+# giEqualizationFactor has no compatible receptacle in the bundled shader (its
+# _IndirectLightIntensity uniform is an unrelated "GI Intensity" knob with its own
+# default/range - see vrm1_extension.gd). It must NOT flow into indirect_light_intensity;
+# these tests guard against reintroducing that mis-mapping.
 
-func test_gi_equalization_default() -> void:
+func test_gi_equalization_does_not_override_indirect_light_intensity() -> void:
 	var p: Dictionary = _parse(_make_mat())
 
-	assert_eq(p["indirect_light_intensity"], 0.9)
+	assert_false(p.has("indirect_light_intensity"))
 
 
-func test_gi_equalization_explicit() -> void:
+func test_gi_equalization_explicit_still_not_mapped() -> void:
 	var p: Dictionary = _parse(_make_mat({ "giEqualizationFactor": 0.5 }))
 
-	assert_eq(p["indirect_light_intensity"], 0.5)
+	assert_false(p.has("indirect_light_intensity"))
 
 
 # ---------------------------------------------------------------------------
