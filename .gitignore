@@ -12,3 +12,8 @@ gut_out.txt
 graphify-out/.graphify_python
 graphify-out/.graphify_root
 graphify-out/cache/
+
+# Licensed VRM avatars - not redistributable, kept locally only
+/assets/luna/
+/assets/temptic/
+/assets/dove/
