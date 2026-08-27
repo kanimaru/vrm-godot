@@ -1,0 +1,19 @@
+# Third-party / generated
+addons/
+.godot/
+imported_models/
+
+# Build outputs
+bin/
+/android/
+*.apk
+
+# Graph output (auto-skipped, but explicit is cleaner)
+graphify-out/
+
+# Tests (optional — they inflate communities around assert_*)
+tests/
+
+.idea/
+.github/
+.git/
