@@ -36,14 +36,6 @@ static func retarget_library_for_model(library: AnimationLibrary, model: Node, i
 	for i: int in range(skeleton.get_bone_count()):
 		world_rests[i] = _compute_bone_world_rest(skeleton, i, skeleton_rot)
 
-	var position_scale: float = 0.08
-	if is_vmd:
-		var head_name: String = VRMUtil.find_bone(skeleton, model, "head")
-		var head_idx: int = skeleton.find_bone(head_name)
-		if head_idx != -1:
-			var head_height: float = skeleton.get_bone_global_rest(head_idx).origin.y
-			position_scale = head_height / 15.8
-
 	# Resolve standard bone names to model's skeleton bone names for kinematics
 	var hips_resolved_name: String = VRMUtil.find_bone(skeleton, model, "hips")
 	var left_up_leg_name: String = VRMUtil.find_bone(skeleton, model, "leftUpperLeg")
@@ -306,11 +298,15 @@ static func retarget_library_for_model(library: AnimationLibrary, model: Node, i
 								final_pos += pos
 							elif is_ik:
 								if is_vmd:
-									var is_left := "left" in path_str
-									var mmd_rest_units := Vector3(-1.83, 0.0, 0.0) if is_left else Vector3(1.83, 0.0, 0.0)
-									var mmd_rest_godot := mmd_rest_units * position_scale
 									var horizontal_offset := Vector3(hips_pos_key0.x, 0.0, hips_pos_key0.z)
-									var delta := (pos - horizontal_offset) - mmd_rest_godot
+									# The VMD builder emits DELTAS from each bone's rest (see
+									# vmd_animation_library_builder: "VMD positions are deltas from
+									# rest") - there is no MMD stance offset in the data. The old
+									# +/-1.83-unit "MMD rest" subtraction injected a fake ~0.15 m
+									# stance offset that nothing cancelled: too-wide or crossed feet,
+									# depending on the X convention of the day. Each foot must land
+									# on its own world rest at the neutral stance.
+									var delta := pos - horizontal_offset
 									# MMD → Godot for a WORLD-space marker: yaw-180 (−x, y, −z)
 									# — the same transform the VRM0 importer applies to the
 									# whole model — and the SAME leg-length scale the hips
