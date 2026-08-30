@@ -58,10 +58,14 @@ func test_vmd_ik_retargeting_vrm1() -> void:
 	# Calculation check:
 	# mmd_rest_godot = Vector3(-1.83, 0, 0) * 0.08 = Vector3(-0.1464, 0, 0)
 	# delta = vmd_absolute_pos - mmd_rest_godot = Vector3(-0.16, 0.05, 0) - Vector3(-0.1464, 0, 0) = Vector3(-0.0136, 0.05, 0)
-	# rotated_delta = delta (since skeleton_rot is identity)
-	# local_rest = left_foot_rest.origin in ModelRoot space = Vector3(-0.15, 0.08, 0.0) (since identity skeleton_rot)
-	# final_pos = local_rest + rotated_delta = Vector3(-0.15 - 0.0136, 0.08 + 0.05, 0.0) = Vector3(-0.1636, 0.13, 0.0)
-	var expected_pos := Vector3(-0.1636, 0.13, 0.0)
+	# MMD → Godot translations are a fixed yaw-180 (−x, y, −z) — the same
+	# transform the VRM0 importer applies to the whole model — NOT dependent on
+	# the skeleton's facing. (The old identity-rotation path this test used to
+	# encode made VRM1 feet move in OPPOSED Z to the hips: the hips-ahead bug.)
+	# world_delta = (0.0136, 0.05, 0)
+	# local_rest = left_foot_rest world rest = Vector3(-0.15, 0.08, 0.0)
+	# final_pos = Vector3(-0.15 + 0.0136, 0.08 + 0.05, 0.0) = Vector3(-0.1364, 0.13, 0.0)
+	var expected_pos := Vector3(-0.1364, 0.13, 0.0)
 	assert_true(retargeted_pos.is_equal_approx(expected_pos), "Retargeted pos %s should be approximately equal to %s" % [retargeted_pos, expected_pos])
 
 
