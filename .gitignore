@@ -17,3 +17,6 @@ graphify-out/cache/
 /assets/luna/
 /assets/temptic/
 /assets/dove/
+
+# Per-machine dotquay links; holds absolute paths.
+dotquay.local.toml
