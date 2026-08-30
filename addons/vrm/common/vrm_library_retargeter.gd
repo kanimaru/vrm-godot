@@ -225,27 +225,51 @@ static func retarget_library_for_model(library: AnimationLibrary, model: Node, i
 						if anim.track_get_key_count(i) > 0:
 							pos_key0 = anim.track_get_key_value(i, 0)
 
+						# Does this clip drive the legs through IK targets? If so
+						# the FK leg rotation keys are junk: MMD ignores FK keys
+						# on IK-controlled bones, and motion files carry baked
+						# residue there. Grounding the hips against that residue
+						# PER KEY made the base height flutter at key rate — the
+						# whole body bobbed against the fixed floor targets, and
+						# whenever the flutter pushed the hips out of leg reach
+						# the IK could only stretch: feet hovering and jumping.
+						# With rest leg rotations the grounding formula collapses
+						# to exactly the hips rest height, so IK-driven clips use
+						# local_rest.y as the base and let the センター deltas
+						# (scaled by S below) carry every authored dip and jump.
+						# FK-only clips keep the per-key grounding: there the FK
+						# keys ARE the motion, and grounding them plants the feet.
+						var has_leg_ik := false
+						for j: int in range(anim.get_track_count()):
+							var p_j: String = str(anim.track_get_path(j))
+							if (anim.track_get_type(j) == Animation.TYPE_POSITION_3D
+									and ("leftLegIk" in p_j or "rightLegIk" in p_j)):
+								has_leg_ik = true
+								break
+
 						for k: int in range(anim.track_get_key_count(i)):
 							var pos: Vector3 = anim.track_get_key_value(i, k)
 							var delta_pos: Vector3 = pos - pos_key0
 
-							var Q_hips: Quaternion = _get_track_rotation_at_key(anim, track_hips_rot, k, q_hips_rest)
-							var Q_left_up_leg: Quaternion = _get_track_rotation_at_key(anim, track_l_up_leg_rot, k, q_l_up_rest)
-							var Q_left_low_leg: Quaternion = _get_track_rotation_at_key(anim, track_l_low_leg_rot, k, q_l_low_rest)
-							var Q_right_up_leg: Quaternion = _get_track_rotation_at_key(anim, track_r_up_leg_rot, k, q_r_up_rest)
-							var Q_right_low_leg: Quaternion = _get_track_rotation_at_key(anim, track_r_low_leg_rot, k, q_r_low_rest)
+							var y_grounded: float = local_rest.y
+							if not has_leg_ik:
+								var Q_hips: Quaternion = _get_track_rotation_at_key(anim, track_hips_rot, k, q_hips_rest)
+								var Q_left_up_leg: Quaternion = _get_track_rotation_at_key(anim, track_l_up_leg_rot, k, q_l_up_rest)
+								var Q_left_low_leg: Quaternion = _get_track_rotation_at_key(anim, track_l_low_leg_rot, k, q_l_low_rest)
+								var Q_right_up_leg: Quaternion = _get_track_rotation_at_key(anim, track_r_up_leg_rot, k, q_r_up_rest)
+								var Q_right_low_leg: Quaternion = _get_track_rotation_at_key(anim, track_r_low_leg_rot, k, q_r_low_rest)
 
-							var T_left_low_pose := Transform3D(Basis(Q_left_low_leg), T_left_low_leg_rest.origin)
-							var T_left_up_pose := Transform3D(Basis(Q_left_up_leg), T_left_up_leg_rest.origin)
-							var v_left_hips: Vector3 = T_left_up_pose * (T_left_low_pose * T_left_foot_rest.origin)
+								var T_left_low_pose := Transform3D(Basis(Q_left_low_leg), T_left_low_leg_rest.origin)
+								var T_left_up_pose := Transform3D(Basis(Q_left_up_leg), T_left_up_leg_rest.origin)
+								var v_left_hips: Vector3 = T_left_up_pose * (T_left_low_pose * T_left_foot_rest.origin)
 
-							var T_right_low_pose := Transform3D(Basis(Q_right_low_leg), T_right_low_leg_rest.origin)
-							var T_right_up_pose := Transform3D(Basis(Q_right_up_leg), T_right_up_leg_rest.origin)
-							var v_right_hips: Vector3 = T_right_up_pose * (T_right_low_pose * T_right_foot_rest.origin)
+								var T_right_low_pose := Transform3D(Basis(Q_right_low_leg), T_right_low_leg_rest.origin)
+								var T_right_up_pose := Transform3D(Basis(Q_right_up_leg), T_right_up_leg_rest.origin)
+								var v_right_hips: Vector3 = T_right_up_pose * (T_right_low_pose * T_right_foot_rest.origin)
 
-							var y_hips_left: float = left_foot_skel_rest_y - (Basis(Q_hips) * v_left_hips).y
-							var y_hips_right: float = right_foot_skel_rest_y - (Basis(Q_hips) * v_right_hips).y
-							var y_grounded: float = maxf(y_hips_left, y_hips_right)
+								var y_hips_left: float = left_foot_skel_rest_y - (Basis(Q_hips) * v_left_hips).y
+								var y_hips_right: float = right_foot_skel_rest_y - (Basis(Q_hips) * v_right_hips).y
+								y_grounded = maxf(y_hips_left, y_hips_right)
 
 							# MMD → Godot translations are a Z-MIRROR (x, y, −z): the single-
 							# axis mirror that converts left-handed MMD to right-handed
