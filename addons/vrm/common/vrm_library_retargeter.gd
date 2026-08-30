@@ -247,10 +247,12 @@ static func retarget_library_for_model(library: AnimationLibrary, model: Node, i
 							var y_hips_right: float = right_foot_skel_rest_y - (Basis(Q_hips) * v_right_hips).y
 							var y_grounded: float = maxf(y_hips_left, y_hips_right)
 
-							# MMD → Godot translations are a YAW-180 (−x, y, −z), the same
-							# transform the VRM0 importer applies to the whole model
-							# (root.rotate_y(PI)) — one convention for hips AND IK targets
-							# so they keep the authored relationship on every facing.
+							# MMD → Godot translations are a Z-MIRROR (x, y, −z): the single-
+							# axis mirror that converts left-handed MMD to right-handed
+							# Godot, with X preserved (MMD left = Godot left = +X;
+							# empirically settled — flipping X swapped the legs across the
+							# body). ONE convention for hips AND IK targets, every facing,
+							# so they keep the authored relationship.
 							#
 							# Downward center motion MUST pass through: an MMD knee bend
 							# is authored as the center dipping while the planted IK
@@ -258,7 +260,7 @@ static func retarget_library_for_model(library: AnimationLibrary, model: Node, i
 							# them. Clamping negative Y kept the hips high, put the
 							# floor targets out of the straight legs' reach, and the
 							# solver could only stretch: straight knees, feet hovering.
-							var godot_delta := Vector3(-delta_pos.x, delta_pos.y, -delta_pos.z)
+							var godot_delta := Vector3(delta_pos.x, delta_pos.y, -delta_pos.z)
 							var local_delta: Vector3 = Basis(skeleton_rot).inverse() * godot_delta
 
 							var final_pos := Vector3(
@@ -307,17 +309,17 @@ static func retarget_library_for_model(library: AnimationLibrary, model: Node, i
 									# depending on the X convention of the day. Each foot must land
 									# on its own world rest at the neutral stance.
 									var delta := pos - horizontal_offset
-									# MMD → Godot for a WORLD-space marker: yaw-180 (−x, y, −z)
-									# — the same transform the VRM0 importer applies to the
-									# whole model — and the SAME leg-length scale the hips
-									# grounding uses, so hips and feet keep the authored
-									# relationship. (In MMD the leg IK bones are children of
-									# 全ての親, root-space — independent of センター/hips — so
-									# the data itself keeps them aligned; the retarget must not
-									# tear them.) The old skeleton_rot rotation made the
-									# mapping facing-dependent: opposed Z on VRM1 (hips
-									# visibly ahead of the feet).
-									var world_delta := Vector3(-delta.x, delta.y, -delta.z) * vmd_translation_scale
+									# MMD → Godot for a WORLD-space marker: Z-MIRROR (x, y, −z),
+									# the same convention and leg-length scale as the hips
+									# grounding, so hips and feet keep the authored relationship.
+									# X preserved — flipping it swaps each leg across the body.
+									# (In MMD the leg IK bones are children of 全ての親,
+									# root-space — independent of センター/hips — so the data
+									# itself keeps them aligned; the retarget must not tear
+									# them.) The old skeleton_rot rotation made the mapping
+									# facing-dependent: opposed Z on VRM1 = hips visibly ahead
+									# of the feet.
+									var world_delta := Vector3(delta.x, delta.y, -delta.z) * vmd_translation_scale
 									final_pos = local_rest + world_delta
 								else:
 									final_pos += pos

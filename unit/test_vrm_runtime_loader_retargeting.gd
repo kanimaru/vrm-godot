@@ -5,11 +5,13 @@ const VrmRuntimeLoader = preload("res://runtime/vrm_runtime_loader.gd")
 
 # The VMD builder emits IK positions as DELTAS from each bone's rest ("VMD
 # positions are deltas from rest" — vmd_animation_library_builder), so the
-# retarget maps them: final = foot_world_rest + yaw180(delta − hips_key0_xz) * S
+# retarget maps them: final = foot_world_rest + zmirror(delta − hips_key0_xz) * S
 # where S is the leg-length translation scale (1.0 for the skeletons below) and
-# yaw-180 = (−x, y, −z), the same transform the VRM0 importer applies to whole
-# models. The SAME mapping applies on every facing — hips and feet must never
-# get facing-dependent conventions (that was the hips-ahead-of-feet bug).
+# zmirror = (x, y, −z): the single-axis mirror that converts left-handed MMD to
+# right-handed Godot. X is PRESERVED — MMD left = Godot left; flipping X swaps
+# each leg across the body (empirically verified). The SAME mapping applies on
+# every facing — hips and feet must never get facing-dependent conventions
+# (that was the hips-ahead-of-feet bug).
 #
 # The mock legs are sized so hips_rest_y − foot_world_rest_y = 0.9 → S = 1.0.
 func _build_leg_model(vrm0: bool) -> Node3D:
@@ -68,9 +70,9 @@ func test_vmd_ik_retargeting_vrm1() -> void:
 	var anim: Animation = library.get_animation("default")
 	var retargeted_pos: Vector3 = anim.track_get_key_value(0, 0)
 
-	# foot world rest (-0.15, 0.08, 0) + yaw180(-0.0136, 0.05, 0) * S(=1)
-	#   = (-0.15 + 0.0136, 0.08 + 0.05, 0)
-	var expected_pos := Vector3(-0.1364, 0.13, 0.0)
+	# foot world rest (-0.15, 0.08, 0) + zmirror(-0.0136, 0.05, 0) * S(=1)
+	#   = (-0.15 - 0.0136, 0.08 + 0.05, 0)
+	var expected_pos := Vector3(-0.1636, 0.13, 0.0)
 	assert_true(retargeted_pos.is_equal_approx(expected_pos),
 		"Retargeted pos %s should be approximately equal to %s" % [retargeted_pos, expected_pos])
 
@@ -86,10 +88,10 @@ func test_vmd_ik_retargeting_vrm0() -> void:
 	var anim: Animation = library.get_animation("default")
 	var retargeted_pos: Vector3 = anim.track_get_key_value(0, 0)
 
-	# VRM0: foot world rest is yaw-180 of skeleton space → (0.15, 0.08, 0);
-	# the DELTA mapping is identical (yaw-180 is facing-independent):
-	#   (0.15 + 0.0136, 0.08 + 0.05, 0)
-	var expected_pos := Vector3(0.1636, 0.13, 0.0)
+	# VRM0: foot world rest picks up the importer's 180° model rotation →
+	# (0.15, 0.08, 0). The DELTA mapping is the same facing-independent
+	# z-mirror: (0.15 - 0.0136, 0.08 + 0.05, 0)
+	var expected_pos := Vector3(0.1364, 0.13, 0.0)
 	assert_true(retargeted_pos.is_equal_approx(expected_pos),
 		"Retargeted pos %s should be approximately equal to %s" % [retargeted_pos, expected_pos])
 
@@ -97,7 +99,7 @@ func test_vmd_ik_retargeting_vrm0() -> void:
 func test_vmd_ik_zero_delta_lands_on_the_foot_rest() -> void:
 	# THE stance property that was broken twice: with no authored motion, each
 	# foot must sit exactly on its own world rest — not crossed (fake MMD rest
-	# offset) and not widened.
+	# offset), not widened, and never anchored to the OTHER foot's side.
 	var loader := VrmRuntimeLoader.new()
 	autofree(loader)
 	var model := _build_leg_model(false)
