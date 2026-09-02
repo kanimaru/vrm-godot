@@ -387,7 +387,7 @@ static func build(
 			var curr: VmdFormat.VmdCameraFrame = cam_frames[cam_idx]
 
 			# Insert keyframe at current time
-			var curr_transform: Transform3D = _get_camera_transform(curr, camera_y_offset)
+			var curr_transform: Transform3D = _get_camera_transform(curr, camera_y_offset, position_scale)
 			anim.track_insert_key(cam_pos_track, curr.frame * time_scale, curr_transform.origin)
 			anim.track_insert_key(cam_rot_track, curr.frame * time_scale, curr_transform.basis.get_rotation_quaternion())
 			anim.track_insert_key(cam_fov_track, curr.frame * time_scale, curr.fov)
@@ -431,7 +431,7 @@ static func build(
 						virtual_frame.rotation = sampled_rot
 						virtual_frame.distance = sampled_dist
 
-						var interpolated_transform: Transform3D = _get_camera_transform(virtual_frame, camera_y_offset)
+						var interpolated_transform: Transform3D = _get_camera_transform(virtual_frame, camera_y_offset, position_scale)
 						anim.track_insert_key(cam_pos_track, sub_frame_idx * time_scale, interpolated_transform.origin)
 						anim.track_insert_key(cam_rot_track, sub_frame_idx * time_scale, interpolated_transform.basis.get_rotation_quaternion())
 						anim.track_insert_key(cam_fov_track, sub_frame_idx * time_scale, sampled_fov)
@@ -472,7 +472,11 @@ static func build(
 ## MMD cameras use a target-and-distance model in left-handed space.
 ## This function converts that to a right-handed camera [Transform3D]
 ## by inverting pitch (X) and yaw (Y) and applying the [param y_offset].
-static func _get_camera_transform(frame: VmdFormat.VmdCameraFrame, y_offset: float = 0.0) -> Transform3D:
+static func _get_camera_transform(
+		frame: VmdFormat.VmdCameraFrame,
+		y_offset: float = 0.0,
+		position_scale: float = 0.08,
+) -> Transform3D:
 	# MMD Camera is Target-based:
 	# - Target position (X, Y, Z)
 	# - Rotation (Euler Radians)
@@ -484,15 +488,18 @@ static func _get_camera_transform(frame: VmdFormat.VmdCameraFrame, y_offset: flo
 	var euler: Vector3 = Vector3(-frame.rotation.x, -frame.rotation.y, frame.rotation.z)
 	var basis: Basis = Basis.from_euler(euler, EULER_ORDER_YXZ)
 
-	# MMD Target: Z is already flipped in parser. Scale by 0.1 as per project spec.
-	var target: Vector3 = frame.target_position * 0.1
+	# MMD Target: Z is already flipped in parser. Scaled by the SAME factor as
+	# the motion data — the camera used a hardcoded 0.1 while motion used 0.08,
+	# so the camera lived in a world 25% larger than the dance it was filming:
+	# targets aimed high and close-up dollies overshot INTO the face.
+	var target: Vector3 = frame.target_position * position_scale
 
 	# Apply Y offset in meters (after scaling)
 	target.y += y_offset
 
 	# MMD distance is distance AWAY from target, and typically negative in VMD files.
 	# In Godot, Camera looks at -Z, so the 'back' vector is +Z.
-	var camera_pos: Vector3 = target + (basis * Vector3(0.0, 0.0, -frame.distance * 0.1))
+	var camera_pos: Vector3 = target + (basis * Vector3(0.0, 0.0, -frame.distance * position_scale))
 
 	return Transform3D(basis, camera_pos)
 
