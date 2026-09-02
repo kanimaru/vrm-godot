@@ -131,6 +131,131 @@ func test_non_gaze_preset_name_is_left_unchanged() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Serialization split-brain regression: a res://-instanced avatar arrives with
+# compiled _binds but EMPTY base-state dictionaries (plain RefCounted vars do
+# not survive the scene save). The reset loop then iterated nothing while the
+# accumulate loop kept adding — blink morphs marched 4 → 9 → 17 within a
+# minute of auto-blink pulses. _ensure_base_state() must rebuild the base from
+# the live meshes so repeated applies TRACK the expression instead of summing.
+# ---------------------------------------------------------------------------
+
+func _build_blink_face(root: Node) -> MeshInstance3D:
+	var mesh_inst := MeshInstance3D.new()
+	mesh_inst.name = "Face"
+	var array_mesh := ArrayMesh.new()
+	array_mesh.add_blend_shape("Blink.Left")
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3.ZERO, Vector3.RIGHT, Vector3.UP])
+	var shape: Array = []
+	shape.resize(Mesh.ARRAY_MAX)
+	shape[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3.UP, Vector3.RIGHT, Vector3.ZERO])
+	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [shape])
+	mesh_inst.mesh = array_mesh
+	root.add_child(mesh_inst)
+	return mesh_inst
+
+
+## _binds as they arrive after serialization: compiled morph binds, NO base.
+func _install_split_brain_blink_bind() -> void:
+	var bind := RuntimeMorphBind.new()
+	bind.path = NodePath("../Face")
+	bind.index = 0
+	bind.weight = 1.0
+	var expression := RuntimeExpression.new()
+	expression.morph_binds.append(bind)
+	_controller._binds["blink"] = expression
+
+
+func test_missing_base_state_does_not_accumulate_morphs() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	root.add_child(_controller)
+	var mesh_inst := _build_blink_face(root)
+	_install_split_brain_blink_bind()
+
+	for i: int in range(5):
+		_controller.set_expression("blink", 1.0)
+		_controller._apply_expressions()
+	assert_almost_eq(mesh_inst.get_blend_shape_value(0), 1.0, 0.0001,
+		"five full-weight applies must land on 1.0, not sum to 5.0")
+
+	_controller.set_expression("blink", 0.25)
+	_controller._apply_expressions()
+	assert_almost_eq(mesh_inst.get_blend_shape_value(0), 0.25, 0.0001,
+		"the morph must track the expression weight")
+
+	_controller.set_expression("blink", 0.0)
+	_controller._apply_expressions()
+	assert_almost_eq(mesh_inst.get_blend_shape_value(0), 0.0, 0.0001,
+		"releasing the expression must restore the captured base")
+
+
+func test_lazy_base_capture_preserves_authored_rest_weight() -> void:
+	# The base is whatever the mesh held BEFORE the first expression write —
+	# including a nonzero authored rest weight, which release must restore.
+	var root := Node3D.new()
+	add_child_autofree(root)
+	root.add_child(_controller)
+	var mesh_inst := _build_blink_face(root)
+	mesh_inst.set_blend_shape_value(0, 0.3)
+	_install_split_brain_blink_bind()
+
+	_controller.set_expression("blink", 1.0)
+	_controller._apply_expressions()
+	_controller.set_expression("blink", 0.0)
+	_controller._apply_expressions()
+
+	assert_almost_eq(mesh_inst.get_blend_shape_value(0), 0.3, 0.0001,
+		"release must restore the pre-expression value, not zero")
+
+
+func test_missing_base_state_does_not_accumulate_material_colors() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	root.add_child(_controller)
+
+	var mesh_inst := MeshInstance3D.new()
+	mesh_inst.name = "Body"
+	var array_mesh := ArrayMesh.new()
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3.ZERO, Vector3.RIGHT, Vector3.UP])
+	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh_inst.mesh = array_mesh
+	root.add_child(mesh_inst)
+
+	# A minimal shader with the uniform under test — deliberately NOT the MToon
+	# builder, so this test runs in checkouts without the MToon shader addon.
+	var shader := Shader.new()
+	shader.code = "shader_type spatial;\nuniform vec4 _RimColor;"
+	var shader_mat := ShaderMaterial.new()
+	shader_mat.shader = shader
+	shader_mat.set_shader_parameter("_RimColor", Color(0.1, 0.2, 0.3, 1.0))
+	mesh_inst.set_surface_override_material(0, shader_mat)
+	var base_rim: Variant = shader_mat.get_shader_parameter("_RimColor")
+
+	var color_bind := RuntimeMaterialColorBind.new()
+	color_bind.material = shader_mat
+	color_bind.prop = "_RimColor"
+	color_bind.color = Color(1.0, 0.0, 0.0, 1.0)
+	var expression := RuntimeExpression.new()
+	expression.color_binds.append(color_bind)
+	_controller._binds["joy"] = expression
+
+	for i: int in range(3):
+		_controller.set_expression("joy", 1.0)
+		_controller._apply_expressions()
+	_controller.set_expression("joy", 0.0)
+	_controller._apply_expressions()
+
+	var released: Variant = shader_mat.get_shader_parameter("_RimColor")
+	assert_eq(typeof(released), TYPE_COLOR)
+	assert_almost_eq(released.r, Color(base_rim).r, 0.01,
+		"releasing must restore the lazily captured base rim color")
+
+
+# ---------------------------------------------------------------------------
 # End-to-end material color bind against a real MToon ShaderMaterial.
 # Regression coverage for the MToon-swap ordering bug: a material bind must land on
 # whatever material is ACTUALLY rendering (the real MToon shader, addressed by its real

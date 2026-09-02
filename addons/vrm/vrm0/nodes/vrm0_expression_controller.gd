@@ -101,6 +101,8 @@ func set_expression(expression_name: String, value: float) -> void:
 
 
 func _apply_expressions() -> void:
+	_ensure_base_state()
+
 	# Reset morph targets to base state
 	for mesh_path: NodePath in _base_morphs:
 		var node: Node = get_node_or_null(mesh_path)
@@ -161,6 +163,72 @@ func _apply_expressions() -> void:
 		for texture_transform_bind: RuntimeTextureTransformBind in expression.uv_binds:
 			if texture_transform_bind.material:
 				_set_material_uv(texture_transform_bind.material, texture_transform_bind.scale * val, texture_transform_bind.offset * val)
+
+
+## Rebuilds the base-state snapshots from the LIVE meshes/materials when they
+## are missing. The base dictionaries hold plain RefCounted values that do NOT
+## survive scene serialization, while the compiled _binds sometimes do — a
+## res://-instanced avatar then arrives split-brained: binds present, base
+## EMPTY. The reset loop iterated nothing, every apply ADDED into the mesh, and
+## blink morphs marched 4 → 9 → 17 within a minute of auto-blink pulses ("VRM0
+## avatars keep distorting"). Values read before the first expression write ARE
+## the base, so capturing lazily here is exact. Idempotent — existing entries
+## (from a same-session compile) are never overwritten — and runs on every
+## apply, because no flag can be trusted across the same serialization boundary
+## that loses the dictionaries.
+func _ensure_base_state() -> void:
+	for expr_key: String in _binds:
+		var expression: RuntimeExpression = _binds[expr_key]
+
+		for morph_bind: RuntimeMorphBind in expression.morph_binds:
+			var node: Node = get_node_or_null(morph_bind.path)
+			if node == null or not node.has_method("get_blend_shape_value"):
+				continue
+			if not _base_morphs.has(morph_bind.path):
+				_base_morphs[morph_bind.path] = RuntimeNodeMorphState.new()
+			var morph_state: RuntimeNodeMorphState = _base_morphs[morph_bind.path]
+			if not morph_state.blend_shapes.has(morph_bind.index):
+				morph_state.blend_shapes[morph_bind.index] = node.get_blend_shape_value(morph_bind.index)
+
+		for color_bind: RuntimeMaterialColorBind in expression.color_binds:
+			if color_bind.material == null:
+				continue
+			var color_mesh_path: NodePath = _mesh_path_for_material(color_bind.material)
+			if color_mesh_path.is_empty():
+				continue
+			if not _base_material_colors.has(color_mesh_path):
+				_base_material_colors[color_mesh_path] = RuntimeMaterialColorState.new()
+			var color_state: RuntimeMaterialColorState = _base_material_colors[color_mesh_path]
+			if not color_state.properties.has(color_bind.prop):
+				color_state.properties[color_bind.prop] = _get_material_color(color_bind.material, color_bind.prop)
+
+		for uv_bind: RuntimeTextureTransformBind in expression.uv_binds:
+			if uv_bind.material == null:
+				continue
+			var uv_mesh_path: NodePath = _mesh_path_for_material(uv_bind.material)
+			if uv_mesh_path.is_empty():
+				continue
+			if not _base_material_uvs.has(uv_mesh_path):
+				_base_material_uvs[uv_mesh_path] = _get_material_uv(uv_bind.material)
+
+
+## The reset loops address materials through their mesh's NodePath; a lazily
+## rebuilt base has only the Material reference, so walk the avatar for the
+## mesh whose active surface material is [param mat].
+func _mesh_path_for_material(mat: Material) -> NodePath:
+	var root: Node = get_parent()
+	if root == null:
+		return NodePath()
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is MeshInstance3D:
+			var mesh_instance := node as MeshInstance3D
+			for surface_idx: int in range(mesh_instance.get_surface_override_material_count()):
+				if mesh_instance.get_active_material(surface_idx) == mat:
+					return NodePath("../" + _get_path_from_root(mesh_instance, root))
+		stack.append_array(node.get_children())
+	return NodePath()
 
 
 func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFState, root_node: Node) -> void:

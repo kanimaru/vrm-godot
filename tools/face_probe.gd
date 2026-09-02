@@ -35,6 +35,20 @@ func _run() -> void:
 		quit(1)
 		return
 	var model: Node = gltf.generate_scene(state)
+
+	# packed=true replays what the EDITOR import does to an avatar: serialize
+	# the scene (PackedScene.pack) and instantiate the serialized copy. The
+	# expression controller's _binds/_base_morphs are plain vars holding
+	# RefCounted objects — whatever survives this round trip is what a
+	# res://-instanced avatar actually runs with.
+	if OS.get_cmdline_user_args().has("packed=true"):
+		var ps := PackedScene.new()
+		var pack_err: Error = ps.pack(model)
+		print("[face] pack err=", pack_err)
+		model.free()
+		model = ps.instantiate()
+		print("[face] instantiated from PackedScene")
+
 	root.add_child(model)
 	await process_frame
 
@@ -46,6 +60,19 @@ func _run() -> void:
 		quit(1)
 		return
 	print("[face] controller=", controller.get_script().get_global_name())
+	print("[face] expressions=", controller.get("expressions"))
+
+	var binds: Dictionary = controller.get("_binds")
+	var base_morphs: Dictionary = controller.get("_base_morphs")
+	print("[face] _binds=", binds.size(), " _base_morphs=", base_morphs.size())
+	for key: NodePath in base_morphs:
+		var state_obj: Variant = base_morphs[key]
+		print("[face]   base ", key, " -> ",
+			"null" if state_obj == null else str(state_obj.get("blend_shapes")))
+	if binds.has("blink"):
+		var blink_expr: Variant = binds["blink"]
+		print("[face]   blink binds=",
+			"null" if blink_expr == null else str((blink_expr.get("morph_binds") as Array).size()))
 
 	var meshes: Array[MeshInstance3D] = []
 	_collect_meshes(model, meshes)
@@ -53,14 +80,17 @@ func _run() -> void:
 
 	for f: int in range(frames):
 		var osc: float = 0.5 + 0.5 * sin(f * 0.21)
-		# The sink writes absolute values through set_expression every tick:
-		# auto-blink, viseme, gaze — plus ARKit names that land in
-		# custom_expressions (unbound on VRM0, should be inert).
+		# The sink writes absolute values through set_expression every tick.
+		# Drive every blink SPELLING the IR/resolver can produce: the VRM0
+		# preset property, IR camelCase, VRM0 spec enum casing, and the model's
+		# own group names — whichever spelling lands in the unclamped
+		# custom_expressions dict AND matches a _binds key is the suspect.
 		controller.call("set_expression", "blink", osc)
+		controller.call("set_expression", "blinkLeft", osc)
+		controller.call("set_expression", "blinkRight", osc)
+		controller.call("set_expression", "blink_l", osc)
+		controller.call("set_expression", "Blink.Left", osc)
 		controller.call("set_expression", "a", 1.0 - osc)
-		controller.call("set_expression", "look_up", osc * 0.35)
-		controller.call("set_expression", "joy", 0.5)
-		controller.call("set_expression", "eyeBlinkLeft", osc)
 		await process_frame
 
 		if f % 100 == 99 or f == frames - 1:
