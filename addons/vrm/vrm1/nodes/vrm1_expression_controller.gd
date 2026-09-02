@@ -326,7 +326,50 @@ func _process(_delta: float) -> void:
 	_apply_expressions()
 
 
+## Rebuilds the base-state snapshots from the LIVE meshes/materials when they
+## are missing. The base dictionaries hold plain RefCounted values that do NOT
+## survive scene serialization, while the compiled _binds sometimes do — a
+## res://-instanced avatar then arrives split-brained: binds present, base
+## EMPTY. Because the morph WRITE loop below iterates _base_morphs, an empty
+## base meant expressions were computed and then silently discarded — VMD and
+## VRMA face animation "completely missing" on VRM1 avatars. Values read before
+## the first expression write ARE the base; idempotent, runs on every apply
+## since no flag can be trusted across the same serialization boundary.
+func _ensure_base_state() -> void:
+	for expr_key: String in _binds:
+		var expression: RuntimeExpression = _binds[expr_key]
+
+		for morph_bind: RuntimeMorphBind in expression.morph_binds:
+			var node: Node = get_node_or_null(morph_bind.path)
+			if node == null or not node.has_method("get_blend_shape_value"):
+				continue
+			var morph_state: RuntimeNodeMorphState = _base_morphs.get_or_add(
+				morph_bind.path, RuntimeNodeMorphState.new())
+			if not morph_state.blend_shapes.has(morph_bind.index):
+				morph_state.blend_shapes[morph_bind.index] = node.get_blend_shape_value(morph_bind.index)
+
+		for color_bind: RuntimeMaterialColorBind in expression.color_binds:
+			if color_bind.material == null:
+				continue
+			var color_state: RuntimeMaterialColorState = _base_material_colors.get_or_add(
+				color_bind.material, RuntimeMaterialColorState.new())
+			if not color_state.properties.has(color_bind.prop):
+				color_state.properties[color_bind.prop] = _get_material_color(
+					color_bind.material, color_bind.prop)
+
+		for uv_bind: RuntimeTextureTransformBind in expression.uv_binds:
+			if uv_bind.material == null:
+				continue
+			if not _base_material_uvs.has(uv_bind.material):
+				var base_uv := RuntimeMaterialUVState.new()
+				base_uv.scale = _get_material_uv_scale(uv_bind.material)
+				base_uv.offset = _get_material_uv_offset(uv_bind.material)
+				_base_material_uvs[uv_bind.material] = base_uv
+
+
 func _apply_expressions() -> void:
+	_ensure_base_state()
+
 	var accumulated_morphs: Dictionary[NodePath, RefCounted] = {}
 	var accumulated_colors: Dictionary[Material, RefCounted] = {}
 	var accumulated_uv_scales: Dictionary[Material, Vector2] = {}

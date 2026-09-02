@@ -90,6 +90,53 @@ func test_vrm1_expression_call_spy():
 	assert_gt(spy.call_count, 0, "set_blend_shape_value should be called on the mesh")
 
 
+func test_vrm1_missing_base_state_still_writes_morphs() -> void:
+	# Serialization split-brain regression, VRM1 flavour: a res://-instanced
+	# avatar arrives with compiled _binds but EMPTY base dictionaries (plain
+	# RefCounted vars don't survive the scene save). The morph WRITE loop
+	# iterates _base_morphs, so expressions were computed and then silently
+	# DISCARDED — VMD/VRMA face animation "completely missing" on VRM1 avatars.
+	# _ensure_base_state() must rebuild the base from the live meshes.
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var controller := Vrm1ExpressionController.new()
+	controller.name = "Vrm1ExpressionController"
+	root.add_child(controller)
+
+	var mesh_inst := MeshInstance3D.new()
+	mesh_inst.name = "Face"
+	var array_mesh := ArrayMesh.new()
+	array_mesh.add_blend_shape("blink")
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3.ZERO, Vector3.RIGHT, Vector3.UP])
+	var shape: Array = []
+	shape.resize(Mesh.ARRAY_MAX)
+	shape[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3.UP, Vector3.RIGHT, Vector3.ZERO])
+	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [shape])
+	mesh_inst.mesh = array_mesh
+	root.add_child(mesh_inst)
+
+	var bind := RuntimeMorphBind.new()
+	bind.path = NodePath("../Face")
+	bind.index = 0
+	bind.weight = 1.0
+	var expression := RuntimeExpression.new()
+	expression.morph_binds.append(bind)
+	controller._binds["blink"] = expression
+	# _base_morphs deliberately left EMPTY — the post-serialization state.
+
+	controller.set_expression("blink", 1.0)
+	controller._process(0.01)
+	assert_almost_eq(mesh_inst.get_blend_shape_value(0), 1.0, 0.0001,
+		"an empty base must be rebuilt lazily, not silently skip the morph write")
+
+	controller.set_expression("blink", 0.0)
+	controller._process(0.01)
+	assert_almost_eq(mesh_inst.get_blend_shape_value(0), 0.0, 0.0001,
+		"release must restore the lazily captured base")
+
+
 func test_vrm0_expressions_temptic():
 	var vrm0_path: String = "res://assets/temptic/model.vrm"
 	if not FileAccess.file_exists(vrm0_path):
