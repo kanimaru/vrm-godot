@@ -94,6 +94,59 @@ func test_branching_hierarchy_creates_one_setting_per_leaf() -> void:
 	assert_eq(sim.get_root_bone_name(1), "Root")
 
 
+func test_every_joint_listed_collapses_to_one_chain() -> void:
+	# Some exporters write every JOINT of a chain into `bones`, not just the
+	# chain root. Naive expansion simulated the same chain once per joint
+	# (Root->Tip, Mid->Tip, Tip->Tip) - nested settings fighting each other and
+	# creeping the mesh away from rest every frame (the "VRM0 avatars balloon
+	# at idle" bug, seen as ears/whiskers/tongue distorting on temptic). Only
+	# the top-most listed bone may seed a chain.
+	var skeleton := _make_linear_skeleton()
+	var spring := _make_spring(0)
+	spring.bones = PackedInt32Array([0, 1, 2])  # Root, Mid, Tip - all joints
+	var secondary_animation := Vrm0SecondaryAnimation.new()
+	secondary_animation.bone_groups = [spring]
+	var gltf_node_names := {0: "Root", 1: "Mid", 2: "Tip"}
+
+	var sim := _attach_and_ready(skeleton, secondary_animation, gltf_node_names)
+
+	assert_eq(sim.get_setting_count(), 1,
+		"listing every joint of one chain must still produce exactly one setting")
+	assert_eq(sim.get_root_bone_name(0), "Root")
+	assert_eq(sim.get_end_bone_name(0), "Tip")
+
+
+func test_two_separate_listed_roots_keep_their_own_chains() -> void:
+	# The dedupe must only drop DESCENDANTS of listed bones - two independent
+	# chains listed in one group (two hair strands) still get one setting each.
+	var skeleton := Skeleton3D.new()
+	var root_a_idx := skeleton.add_bone("RootA")
+	skeleton.set_bone_rest(root_a_idx, Transform3D.IDENTITY)
+	var tip_a_idx := skeleton.add_bone("TipA")
+	skeleton.set_bone_parent(tip_a_idx, root_a_idx)
+	skeleton.set_bone_rest(tip_a_idx, Transform3D(Basis.IDENTITY, Vector3(0, -0.5, 0)))
+	var root_b_idx := skeleton.add_bone("RootB")
+	skeleton.set_bone_rest(root_b_idx, Transform3D.IDENTITY)
+	var tip_b_idx := skeleton.add_bone("TipB")
+	skeleton.set_bone_parent(tip_b_idx, root_b_idx)
+	skeleton.set_bone_rest(tip_b_idx, Transform3D(Basis.IDENTITY, Vector3(0, -0.5, 0)))
+	skeleton.reset_bone_poses()
+
+	var spring := _make_spring(0)
+	spring.bones = PackedInt32Array([0, 2])  # RootA and RootB - unrelated chains
+	var secondary_animation := Vrm0SecondaryAnimation.new()
+	secondary_animation.bone_groups = [spring]
+	var gltf_node_names := {0: "RootA", 1: "TipA", 2: "RootB", 3: "TipB"}
+
+	var sim := _attach_and_ready(skeleton, secondary_animation, gltf_node_names)
+
+	assert_eq(sim.get_setting_count(), 2,
+		"two independent listed roots must keep one setting each")
+	var root_names: Array = [sim.get_root_bone_name(0), sim.get_root_bone_name(1)]
+	assert_true("RootA" in root_names)
+	assert_true("RootB" in root_names)
+
+
 func test_stiffness_gravity_drag_radius_applied_to_setting() -> void:
 	var skeleton := _make_linear_skeleton()
 	var secondary_animation := Vrm0SecondaryAnimation.new()

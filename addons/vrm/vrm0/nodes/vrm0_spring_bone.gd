@@ -29,13 +29,26 @@ func _ready() -> void:
 	# linear root-to-leaf path in that subtree becomes its own setting (a branching
 	# hierarchy, e.g. a two-strand ponytail, becomes two settings sharing the same
 	# root/physics properties).
+	#
+	# Some exporters write EVERY joint of a chain into `bones`, not just the roots.
+	# Expanding each listed joint to the leaves then simulates the same chain once
+	# per joint (ear -> tip, ear_tip -> tip, tip -> tip ...): nested settings fight
+	# over the same bones every update and the mesh creeps further from rest each
+	# frame - VRM0 avatars visibly ballooning at idle. Keep only the TOP-MOST
+	# listed bones per group; a listed bone with a listed ancestor is already part
+	# of that ancestor's chain.
 	var chains: Array[Dictionary] = []
 	for group: Vrm0Spring in secondary_animation.bone_groups:
+		var listed: PackedInt32Array = PackedInt32Array()
 		for bone_node_idx: int in group.bones:
 			if not gltf_node_names.has(bone_node_idx):
 				continue
 			var root_idx: int = skeleton.find_bone(gltf_node_names[bone_node_idx])
-			if root_idx == -1:
+			if root_idx != -1 and not listed.has(root_idx):
+				listed.append(root_idx)
+
+		for root_idx: int in listed:
+			if _has_listed_ancestor(skeleton, root_idx, listed):
 				continue
 			for leaf_idx: int in VrmSceneComposer.find_leaf_bones(skeleton, root_idx):
 				chains.append({"group": group, "root_idx": root_idx, "leaf_idx": leaf_idx})
@@ -60,6 +73,17 @@ func _ready() -> void:
 
 		_apply_center(setting_idx, group.center)
 		_apply_colliders(setting_idx, group.collider_groups)
+
+
+## True when any ancestor of bone_idx is also in listed - such a bone is interior
+## to another listed chain and must not seed its own overlapping setting.
+func _has_listed_ancestor(skeleton: Skeleton3D, bone_idx: int, listed: PackedInt32Array) -> bool:
+	var parent_idx: int = skeleton.get_bone_parent(bone_idx)
+	while parent_idx != -1:
+		if listed.has(parent_idx):
+			return true
+		parent_idx = skeleton.get_bone_parent(parent_idx)
+	return false
 
 
 ## Points setting_idx's center-of-simulation at the spring's authored center bone, if any;
