@@ -183,12 +183,14 @@ static func build(
 		for frame_idx: int in all_frames:
 			var total_pos: Vector3 = Vector3.ZERO
 			var total_rot: Quaternion = Quaternion.IDENTITY
+			var frame_interp: PackedByteArray = PackedByteArray()
 
 			for mmd_name: String in mmd_names:
 				var frames: Array = mmd_bone_tracks[mmd_name]
 				# Sample/Interpolate MMD bone at frame_idx
 				var sampled_pos: Vector3 = Vector3.ZERO
 				var sampled_rot: Quaternion = Quaternion.IDENTITY
+				var exact_interp: PackedByteArray = PackedByteArray()
 
 				if frames.size() > 0:
 					var found: bool = false
@@ -197,19 +199,28 @@ static func build(
 						if bone_frame.frame == frame_idx:
 							sampled_pos = bone_frame.position * position_scale
 							sampled_rot = bone_frame.rotation
+							exact_interp = bone_frame.interpolation
 							found = true
 							break
 						elif bone_frame.frame > frame_idx:
-							# Interpolate between the previous and this keyframe.
+							# Interpolate between the previous key and this one
+							# through THIS key's authored Bezier easing — MMD
+							# stores each segment's curves on the arriving key.
+							# The old linear shortcut here flattened every
+							# ease-in/out that crossed a merge boundary.
 							if search_idx > 0:
 								var prev: VmdFormat.VmdBoneFrame = frames[search_idx - 1]
 								var next: VmdFormat.VmdBoneFrame = frames[search_idx]
-								var interp_factor: float = (
+								var ft: float = (
 									float(frame_idx - prev.frame) / (next.frame - prev.frame)
 								)
-								# Simplified linear for merge sampling
-								sampled_pos = prev.position.lerp(next.position, interp_factor) * position_scale
-								sampled_rot = prev.rotation.slerp(next.rotation, interp_factor)
+								var curves: Array[VmdBezier] = _extract_curves(next.interpolation)
+								sampled_pos = Vector3(
+									lerpf(prev.position.x, next.position.x, curves[0].evaluate(ft)),
+									lerpf(prev.position.y, next.position.y, curves[1].evaluate(ft)),
+									lerpf(prev.position.z, next.position.z, curves[2].evaluate(ft)),
+								) * position_scale
+								sampled_rot = prev.rotation.slerp(next.rotation, curves[3].evaluate(ft))
 							else:
 								sampled_pos = frames[0].position * position_scale
 								sampled_rot = frames[0].rotation
@@ -233,7 +244,18 @@ static func build(
 				if contributes_rot:
 					total_rot = total_rot * sampled_rot
 
-			merged_bone_data[vrm_name][frame_idx] = { "pos": total_pos, "rot": total_rot }
+				# Carry the easing for the segment ARRIVING at this key so the
+				# track subdivision below can reproduce it. When several MMD
+				# bones merge (hips), the position driver's curves win — an
+				# approximation, but exact for the single-contributor majority.
+				if not exact_interp.is_empty() and (frame_interp.is_empty() or contributes_pos):
+					frame_interp = exact_interp
+
+			merged_bone_data[vrm_name][frame_idx] = {
+				"pos": total_pos,
+				"rot": total_rot,
+				"interp": frame_interp,
+			}
 
 	# 2. Calculate initial offsets for centering and grounding.
 	# Horizontal Centering: Use Hips X,Z from first frame.
@@ -327,36 +349,40 @@ static func build(
 					final_pos = data_at_frame.pos
 				anim.track_insert_key(pos_track, frame_idx * time_scale, final_pos)
 
-			# Interpolation (linear fallback for merged keys)
+			# Subdivide each authored segment per frame THROUGH the segment's
+			# Bezier easing (carried on the arriving key). The old linear bake
+			# hard-coded constant velocity into dense keys: every authored
+			# ease-in/out became a robotic move with a velocity snap at each
+			# key — the "way too harsh" transitions.
 			if key_idx + 1 < frame_indices.size():
 				var next_frame_idx: int = frame_indices[key_idx + 1]
 				var frame_diff: int = next_frame_idx - frame_idx
 				if frame_diff > 1:
 					var next_data: Dictionary = vrm_frames[next_frame_idx]
+					var curves: Array[VmdBezier] = _extract_curves(
+						next_data.get("interp", PackedByteArray()))
 					for sub_step: int in range(1, frame_diff):
-						var interp_factor: float = float(sub_step) / frame_diff
+						var ft: float = float(sub_step) / frame_diff
 						var sub_frame: int = frame_idx + sub_step
 
 						if rot_track != -1:
-							var sampled_q: Quaternion = data_at_frame.rot.slerp(next_data.rot, interp_factor)
+							var sampled_q: Quaternion = data_at_frame.rot.slerp(
+								next_data.rot, curves[3].evaluate(ft))
 							anim.track_insert_key(rot_track, sub_frame * time_scale, pre_rot * sampled_q)
 
 						if pos_track != -1:
-							var sampled_p: Vector3 = data_at_frame.pos.lerp(next_data.pos, interp_factor)
-							var current_root_pos: Vector3 = Vector3.ZERO
-							if merged_bone_data.has(MODEL_ROOT_VRM_NAME):
-								# For simplicity, we'll lerp the root too
-								var root_frames: Dictionary = merged_bone_data[MODEL_ROOT_VRM_NAME]
-								var root_start: Vector3 = root_frames.get(frame_idx, { "pos": Vector3.ZERO }).pos
-								var root_end: Vector3 = root_frames.get(next_frame_idx, { "pos": root_start }).pos
-								current_root_pos = root_start.lerp(root_end, interp_factor)
-
-							var final_pos: Vector3
-							if vrm_name == MODEL_ROOT_VRM_NAME:
-								final_pos = sampled_p - initial_root_offset
-							else:
-								# Pure delta interpolation
-								final_pos = sampled_p
+							var a: Vector3 = data_at_frame.pos
+							var b: Vector3 = next_data.pos
+							var sampled_p := Vector3(
+								lerpf(a.x, b.x, curves[0].evaluate(ft)),
+								lerpf(a.y, b.y, curves[1].evaluate(ft)),
+								lerpf(a.z, b.z, curves[2].evaluate(ft)),
+							)
+							var final_pos: Vector3 = (
+								sampled_p - initial_root_offset
+								if vrm_name == MODEL_ROOT_VRM_NAME
+								else sampled_p
+							)
 							anim.track_insert_key(pos_track, sub_frame * time_scale, final_pos)
 
 	# 3. Build Camera Tracks
