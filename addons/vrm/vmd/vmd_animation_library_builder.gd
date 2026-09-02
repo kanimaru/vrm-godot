@@ -368,6 +368,12 @@ static func build(
 				return frame_a.frame < frame_b.frame
 		)
 
+		# Camera frames must count toward the animation length: a camera-only
+		# .vmd has no bone/morph frames, so without this the length stayed at
+		# ~0 and every sample clamped to the first key — a frozen camera.
+		var last_cam_frame: VmdFormat.VmdCameraFrame = cam_frames.back()
+		max_frame = maxi(max_frame, last_cam_frame.frame)
+
 		var cam_pos_track: int = anim.add_track(Animation.TYPE_POSITION_3D)
 		anim.track_set_path(cam_pos_track, camera_path)
 
