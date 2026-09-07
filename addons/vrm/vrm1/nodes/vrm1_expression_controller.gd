@@ -91,7 +91,12 @@ const Vrm1ActiveExpression = preload("uid://c1a6ryxsiq0bm")  # res://addons/vrm/
 
 var custom_expressions: Dictionary[String, float] = {}
 var _is_dirty: bool = false
-var _binds: Dictionary[String, RuntimeExpression] = {}
+## Compiled at import time and STORED with the scene: the binds need GLTFState to
+## compile (glTF node index -> scene node), which an instantiated scene no longer
+## has. Without storage every instantiated avatar came up with `expressions == []`.
+## export_storage rather than export: serialized, but not a wall of sub-resources
+## in the inspector.
+@export_storage var _binds: Dictionary[String, RuntimeExpression] = {}
 var _base_morphs: Dictionary[NodePath, RuntimeNodeMorphState] = {}
 var _base_material_colors: Dictionary[Material, RuntimeMaterialColorState] = {}
 var _base_material_uvs: Dictionary[Material, RuntimeMaterialUVState] = {}

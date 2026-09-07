@@ -23,7 +23,12 @@ const VRM0_GAZE_PRESET_ALIASES: Dictionary[String, String] = {
 }
 
 
-var _binds: Dictionary[String, RuntimeExpression] = {}
+## Compiled at import time and STORED with the scene: the binds need GLTFState to
+## compile (glTF node index -> scene node), which an instantiated scene no longer
+## has. Without storage every instantiated avatar came up with `expressions == []`.
+## export_storage rather than export: serialized, but not a wall of sub-resources
+## in the inspector.
+@export_storage var _binds: Dictionary[String, RuntimeExpression] = {}
 var expressions: Array[String]: 
 	get():
 		var typed: Array[String] = []
