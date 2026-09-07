@@ -20,3 +20,12 @@ graphify-out/cache/
 
 # Per-machine dotquay links; holds absolute paths.
 dotquay.local.toml
+
+# Per-machine dotquay links; hold absolute paths.
+dotquay.local.targets
+
+# The MToon shader addon is installed by `dotquay install` from dotquay.lock (and is a local
+# link to F:\projects\godot\mtoon-shader on the dev machine) - not tracked here. It used to be
+# committed under the wrong folder name, addons/mtoon-shader; the addon references itself as
+# res://addons/Godot-MToon-Shader/ (install_as in dotquay.toml).
+addons/Godot-MToon-Shader/
