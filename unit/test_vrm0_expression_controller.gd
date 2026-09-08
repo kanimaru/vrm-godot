@@ -299,3 +299,55 @@ func test_rim_color_bind_applies_to_real_mtoon_shader_uniform() -> void:
 	var applied: Variant = shader_mat.get_shader_parameter("_RimColor")
 	assert_eq(typeof(applied), TYPE_COLOR, "the bind should have written a Color to the real _RimColor shader uniform")
 	assert_almost_eq(applied.r, 1.0, 0.01)
+
+
+# ---------------------------------------------------------------------------
+# get_expression (the read half)
+# This controller was write-only for a long time while the VRM1 one had a
+# getter, so anything polling weights generically read every VRM0 weight as 0
+# and logged "Nonexistent function 'get_expression'" once per expression per
+# poll. The round trip matters more than the getter merely existing:
+# set_expression picks the store (exported property vs custom_expressions) and
+# get_expression must pick the same one, or a written weight reads back as 0
+# in silence.
+# ---------------------------------------------------------------------------
+
+func test_get_expression_reads_back_a_standard_preset() -> void:
+	_controller.set_expression("joy", 0.6)
+
+	assert_almost_eq(_controller.get_expression("joy"), 0.6, 0.0001)
+
+
+func test_get_expression_reads_back_a_custom_expression() -> void:
+	# Perfect-sync ARKit morphs arrive as custom expressions, not presets - the
+	# store set_expression routes them to must be the one get_expression checks.
+	_controller.set_expression("mouthSmileLeft", 0.4)
+
+	assert_almost_eq(_controller.get_expression("mouthSmileLeft"), 0.4, 0.0001)
+	assert_true(_controller.custom_expressions.has("mouthSmileLeft"),
+		"a non-preset name belongs in custom_expressions")
+
+
+func test_get_expression_round_trips_every_standard_name() -> void:
+	for expr_name: String in Vrm0ExpressionController.STANDARD_EXPRESSIONS:
+		_controller.set_expression(expr_name, 0.25)
+		assert_almost_eq(_controller.get_expression(expr_name), 0.25, 0.0001,
+			"%s must round trip through its exported property" % expr_name)
+
+
+func test_get_expression_normalizes_case_like_set_expression() -> void:
+	_controller.set_expression("Blink", 1.0)
+
+	assert_almost_eq(_controller.get_expression("BLINK"), 1.0, 0.0001)
+	assert_almost_eq(_controller.blink, 1.0, 0.0001, "both spellings must reach the exported property")
+
+
+func test_get_expression_is_zero_for_an_unknown_name() -> void:
+	assert_almost_eq(_controller.get_expression("not_an_expression"), 0.0, 0.0001)
+
+
+func test_controller_advertises_get_expression() -> void:
+	# The contract generic callers probe with has_method() before reading;
+	# without it they report every weight as 0, which is indistinguishable from
+	# a genuinely released expression.
+	assert_true(_controller.has_method("get_expression"))

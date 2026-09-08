@@ -22,6 +22,22 @@ const VRM0_GAZE_PRESET_ALIASES: Dictionary[String, String] = {
 	"lookright": "look_right",
 }
 
+## The expression names this controller keeps in an exported property rather than
+## in custom_expressions. Single source of truth for set_expression,
+## get_expression and _apply_expressions: all three must agree on where a weight
+## lives, or a value written to one store is read back from the other as 0.
+##
+## "surprised" is deliberately absent even though an exported property of that
+## name exists on this node. VRM0's BlendShapePreset enum has no surprised, so
+## such a group has always arrived as a custom expression and its weight has
+## always lived in custom_expressions; the exported property is a stray from the
+## VRM1 shape and moving the name here would strand it.
+const STANDARD_EXPRESSIONS: Array[String] = [
+	"neutral", "joy", "angry", "sorrow", "fun",
+	"a", "i", "u", "e", "o",
+	"blink", "blink_left", "blink_right",
+	"look_up", "look_down", "look_left", "look_right",
+]
 
 ## Compiled at import time and STORED with the scene: the binds need GLTFState to
 ## compile (glTF node index -> scene node), which an instantiated scene no longer
@@ -96,9 +112,26 @@ func _process(_delta: float) -> void:
 		_dirty = false
 
 
+## Read one expression weight back. The mirror of set_expression, including its
+## to_lower() normalization, so a weight written under any spelling reads back
+## under the same one.
+##
+## Added late: this controller was write-only for a long time while the VRM1 one
+## had a getter, so anything polling weights generically (VBeami's Live Monitor
+## and facedebug dump, for two) raised "Nonexistent function 'get_expression'"
+## once per expression per poll against every VRM0 avatar and read every weight
+## as 0. Callers that must cope with a controller lacking this should probe with
+## has_method() rather than call blind.
+func get_expression(expression_name: String) -> float:
+	var standard_prop := expression_name.to_lower()
+	if standard_prop in STANDARD_EXPRESSIONS:
+		return get(standard_prop)
+	return custom_expressions.get(expression_name, 0.0)
+
+
 func set_expression(expression_name: String, value: float) -> void:
-	var standard_prop = expression_name.to_lower()
-	if standard_prop in ["neutral", "joy", "angry", "sorrow", "fun", "a", "i", "u", "e", "o", "blink", "blink_left", "blink_right", "look_up", "look_down", "look_left", "look_right"]:
+	var standard_prop := expression_name.to_lower()
+	if standard_prop in STANDARD_EXPRESSIONS:
 		set(standard_prop, value)
 	else:
 		custom_expressions[expression_name] = value
@@ -140,7 +173,7 @@ func _apply_expressions() -> void:
 	# Accumulate and apply all active expressions
 	for expr_key in _binds:
 		var val: float = 0.0
-		if expr_key in ["neutral", "joy", "angry", "sorrow", "fun", "a", "i", "u", "e", "o", "blink", "blink_left", "blink_right", "look_up", "look_down", "look_left", "look_right"]:
+		if expr_key in STANDARD_EXPRESSIONS:
 			val = get(expr_key)
 		else:
 			val = custom_expressions.get(expr_key, 0.0)
