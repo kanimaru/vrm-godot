@@ -351,3 +351,88 @@ func test_controller_advertises_get_expression() -> void:
 	# without it they report every weight as 0, which is indistinguishable from
 	# a genuinely released expression.
 	assert_true(_controller.has_method("get_expression"))
+
+
+# ---------------------------------------------------------------------------
+# Weight clamping
+# The exported presets clamp in their own setters, so only the custom path and
+# the accumulate loop were ever unbounded. Both matter: a weight above 1 is not
+# just cosmetic, it drives a morph past its authored shape and the mesh visibly
+# tears. VRM1 already caps both (set_custom_expression, and clampf on the summed
+# morph value); these pin VRM0 to the same contract.
+# ---------------------------------------------------------------------------
+
+func test_set_expression_clamps_a_custom_expression_above_one() -> void:
+	_controller.set_expression("mouthSmileLeft", 5.0)
+
+	assert_almost_eq(_controller.get_expression("mouthSmileLeft"), 1.0, 0.0001,
+		"a custom expression must clamp like a preset does")
+
+
+func test_set_expression_clamps_a_custom_expression_below_zero() -> void:
+	_controller.set_expression("mouthSmileLeft", -2.0)
+
+	assert_almost_eq(_controller.get_expression("mouthSmileLeft"), 0.0, 0.0001)
+
+
+func test_standard_presets_still_clamp() -> void:
+	# The half that already worked. Here so a refactor of set_expression cannot
+	# quietly move the clamp off the preset path while fixing the custom one.
+	_controller.set_expression("joy", 5.0)
+	_controller.set_expression("blink", -1.0)
+
+	assert_almost_eq(_controller.joy, 1.0, 0.0001)
+	assert_almost_eq(_controller.blink, 0.0, 0.0001)
+
+
+## Two expressions bound to the SAME morph index, each at full weight. The
+## accumulate loop adds into whatever is already on the mesh, so without a cap
+## the second bind carries the morph to 2.0.
+func _install_two_binds_on_one_morph() -> void:
+	for expr_name: String in ["blink", "joy"]:
+		var bind := RuntimeMorphBind.new()
+		bind.path = NodePath("../Face")
+		bind.index = 0
+		bind.weight = 1.0
+		var expression := RuntimeExpression.new()
+		expression.morph_binds.append(bind)
+		_controller._binds[expr_name] = expression
+
+
+func test_two_binds_on_one_morph_cannot_exceed_full_weight() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	root.add_child(_controller)
+	var mesh_inst := _build_blink_face(root)
+	_install_two_binds_on_one_morph()
+
+	_controller.set_expression("blink", 1.0)
+	_controller.set_expression("joy", 1.0)
+	_controller._apply_expressions()
+
+	assert_almost_eq(mesh_inst.get_blend_shape_value(0), 1.0, 0.0001,
+		"two full-weight binds on one morph must cap at 1.0, not sum to 2.0")
+
+
+func test_a_weight_written_straight_into_the_dictionary_cannot_overdrive_a_morph() -> void:
+	# custom_expressions is @export, so the inspector and any direct write bypass
+	# set_expression entirely. Clamping only on the way in would leave this path
+	# open, which is why the accumulate loop has to cap as well.
+	var root := Node3D.new()
+	add_child_autofree(root)
+	root.add_child(_controller)
+	var mesh_inst := _build_blink_face(root)
+
+	var bind := RuntimeMorphBind.new()
+	bind.path = NodePath("../Face")
+	bind.index = 0
+	bind.weight = 1.0
+	var expression := RuntimeExpression.new()
+	expression.morph_binds.append(bind)
+	_controller._binds["mouthSmileLeft"] = expression
+
+	_controller.custom_expressions["mouthSmileLeft"] = 5.0
+	_controller._apply_expressions()
+
+	assert_almost_eq(mesh_inst.get_blend_shape_value(0), 1.0, 0.0001,
+		"an unclamped dictionary write must still land inside 0..1 on the mesh")

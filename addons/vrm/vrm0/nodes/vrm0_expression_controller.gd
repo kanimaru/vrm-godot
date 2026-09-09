@@ -134,7 +134,10 @@ func set_expression(expression_name: String, value: float) -> void:
 	if standard_prop in STANDARD_EXPRESSIONS:
 		set(standard_prop, value)
 	else:
-		custom_expressions[expression_name] = value
+		# The presets get their clamp from their own exported setters; a custom
+		# expression has no setter to inherit one from, so it clamps here. Mirrors
+		# Vrm1ExpressionController.set_custom_expression.
+		custom_expressions[expression_name] = clampf(value, 0.0, 1.0)
 		_request_update()
 
 
@@ -190,7 +193,14 @@ func _apply_expressions() -> void:
 			var node: Node = get_node_or_null(morph_bind.path)
 			if node and node.has_method("set_blend_shape_value"):
 				var current: float = node.get_blend_shape_value(morph_bind.index) if node.has_method("get_blend_shape_value") else 0.0
-				node.set_blend_shape_value(morph_bind.index, current + (val * morph_bind.weight))
+				# Capped, not just summed. Several expressions can bind the same morph
+				# index (VRM's combined `blink` shares targets with blink_L/blink_R), and
+				# unbounded addition drives the morph past its authored shape - the mesh
+				# visibly tears rather than merely looking wrong. This also catches a weight
+				# written straight into custom_expressions, which is @export and so bypasses
+				# set_expression's clamp entirely. VRM0 bind weights are non-negative, so
+				# capping per contribution reaches the same place as capping the sum.
+				node.set_blend_shape_value(morph_bind.index, clampf(current + (val * morph_bind.weight), 0.0, 1.0))
 
 		# Material color binds (uses RuntimeMaterialColorBind fields: material, prop, color)
 		for material_color_bind: RuntimeMaterialColorBind in expression.color_binds:
