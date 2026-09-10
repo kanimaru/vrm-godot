@@ -19,6 +19,18 @@ func _run() -> void:
 		if arg.begins_with("file="):
 			file = arg.trim_prefix("file=")
 
+	# Raw parse first: how many morph frames does the FILE even carry, and
+	# under which names? Distinguishes "no face data authored" from "face data
+	# lost in the pipeline".
+	var data = load("res://addons/vrm/vmd/vmd_parser.gd").parse_file(file)
+	if data != null:
+		var names: Dictionary = {}
+		for mf in data.morph_frames:
+			names[mf.name] = int(names.get(mf.name, 0)) + 1
+		print("[morph] raw morph frames=", data.morph_frames.size(), " unique names=", names.size())
+		for n: String in names:
+			print("[morph]   raw '", n, "' x", names[n])
+
 	var library: AnimationLibrary = load("res://addons/vrm/vmd/vmd_loader.gd") \
 		.load_animation_library(file, 30.0, 0.0, false, 0.08)
 	var anim: Animation = library.get_animation(library.get_animation_list()[0])
