@@ -324,8 +324,8 @@ func test_get_expression_reads_back_a_custom_expression() -> void:
 	_controller.set_expression("mouthSmileLeft", 0.4)
 
 	assert_almost_eq(_controller.get_expression("mouthSmileLeft"), 0.4, 0.0001)
-	assert_true(_controller.custom_expressions.has("mouthSmileLeft"),
-		"a non-preset name belongs in custom_expressions")
+	assert_true(_controller.custom_expressions.has("mouthsmileleft"),
+		"a non-preset name belongs in custom_expressions, under its normalized key")
 
 
 func test_get_expression_round_trips_every_standard_name() -> void:
@@ -436,3 +436,73 @@ func test_a_weight_written_straight_into_the_dictionary_cannot_overdrive_a_morph
 
 	assert_almost_eq(mesh_inst.get_blend_shape_value(0), 1.0, 0.0001,
 		"an unclamped dictionary write must still land inside 0..1 on the mesh")
+
+
+# ---------------------------------------------------------------------------
+# Custom-expression key normalization (the frozen-mouth bug)
+# compile_vrm0_binds keyed custom groups by group.name.to_lower() ("jawopen")
+# while set_expression stored the weight under the caller's spelling
+# ("jawOpen" - the ARKit canonical form VBeami's solver emits). Dictionary
+# lookups are case-sensitive, so _apply_expressions read every perfect-sync
+# weight as 0.0 and a VRM0 avatar's mouth never moved. All four call sites now
+# share _custom_key(); these pin that they agree.
+# ---------------------------------------------------------------------------
+
+func _make_custom_group(clip_name: String) -> Vrm0BlendShapeGroup:
+	var group := Vrm0BlendShapeGroup.new()
+	group.preset_name = "unknown"
+	group.name = clip_name
+	return group
+
+
+func test_compiled_custom_bind_key_matches_set_expression_key() -> void:
+	var master := Vrm0BlendShape.new()
+	master.blend_shape_groups.append(_make_custom_group("jawOpen"))
+	_controller.compile_vrm0_binds(master, GLTFState.new(), autofree(Node.new()))
+	assert_eq(_controller.expressions.size(), 1)
+	var bind_key: String = _controller.expressions[0]
+
+	_controller.set_expression("jawOpen", 0.8)
+
+	assert_almost_eq(_controller.custom_expressions.get(bind_key, 0.0), 0.8, 0.0001,
+		"the weight must be stored under the exact key the bind was compiled to (%s)" % bind_key)
+
+
+func test_camel_case_perfect_sync_weight_reaches_the_mesh() -> void:
+	# The end-to-end symptom. The bind is installed under the key compile
+	# produces; the weight arrives under the spelling the solver uses.
+	var root := Node3D.new()
+	add_child_autofree(root)
+	root.add_child(_controller)
+	var mesh_inst := _build_blink_face(root)
+
+	var bind := RuntimeMorphBind.new()
+	bind.path = NodePath("../Face")
+	bind.index = 0
+	bind.weight = 1.0
+	var expression := RuntimeExpression.new()
+	expression.morph_binds.append(bind)
+	_controller._binds["jawopen"] = expression
+
+	_controller.set_expression("jawOpen", 1.0)
+	_controller._apply_expressions()
+
+	assert_almost_eq(mesh_inst.get_blend_shape_value(0), 1.0, 0.0001,
+		"a camelCase weight must drive the lower-cased bind; 0.0 here is the frozen-mouth bug")
+
+
+func test_custom_expression_reads_back_under_any_spelling() -> void:
+	_controller.set_expression("JawOpen", 0.4)
+
+	assert_almost_eq(_controller.get_expression("jawopen"), 0.4, 0.0001)
+	assert_almost_eq(_controller.get_expression("JAWOPEN"), 0.4, 0.0001)
+	assert_almost_eq(_controller.get_expression("jawOpen"), 0.4, 0.0001)
+
+
+func test_custom_expression_spellings_share_one_slot() -> void:
+	# Two spellings must not become two entries that the apply loop then sums.
+	_controller.set_expression("jawOpen", 1.0)
+	_controller.set_expression("JAWOPEN", 0.2)
+
+	assert_eq(_controller.custom_expressions.size(), 1, "one expression, one key")
+	assert_almost_eq(_controller.get_expression("jawOpen"), 0.2, 0.0001, "the later write wins")

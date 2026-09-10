@@ -106,15 +106,31 @@ func _request_update() -> void:
 	_dirty = true
 
 
+## The one spelling a custom (non-preset) expression is stored and looked up
+## under. compile_vrm0_binds, set_expression, get_expression and
+## _apply_expressions all route custom names through here, so the dictionary
+## key never depends on which spelling a caller happened to use.
+##
+## This exists because it once did: compile stored binds under
+## group.name.to_lower() ("jawopen") while set_expression stored weights under
+## the caller's spelling ("jawOpen", the ARKit canonical form VBeami's solver
+## emits). GDScript dictionaries are case-sensitive, so _apply_expressions read
+## every perfect-sync weight back as 0.0 and the mouth never moved on a VRM0
+## avatar. Lower-case is the stored form because that is what already-imported
+## scenes carry in their serialized _binds.
+static func _custom_key(expression_name: String) -> String:
+	return expression_name.to_lower()
+
+
 func _process(_delta: float) -> void:
 	if _dirty:
 		_apply_expressions()
 		_dirty = false
 
 
-## Read one expression weight back. The mirror of set_expression, including its
-## to_lower() normalization, so a weight written under any spelling reads back
-## under the same one.
+## Read one expression weight back. The mirror of set_expression: presets and
+## custom names both normalize through the same path, so a weight written under
+## any spelling reads back under any other.
 ##
 ## Added late: this controller was write-only for a long time while the VRM1 one
 ## had a getter, so anything polling weights generically (VBeami's Live Monitor
@@ -126,7 +142,7 @@ func get_expression(expression_name: String) -> float:
 	var standard_prop := expression_name.to_lower()
 	if standard_prop in STANDARD_EXPRESSIONS:
 		return get(standard_prop)
-	return custom_expressions.get(expression_name, 0.0)
+	return custom_expressions.get(_custom_key(expression_name), 0.0)
 
 
 func set_expression(expression_name: String, value: float) -> void:
@@ -137,7 +153,7 @@ func set_expression(expression_name: String, value: float) -> void:
 		# The presets get their clamp from their own exported setters; a custom
 		# expression has no setter to inherit one from, so it clamps here. Mirrors
 		# Vrm1ExpressionController.set_custom_expression.
-		custom_expressions[expression_name] = clampf(value, 0.0, 1.0)
+		custom_expressions[_custom_key(expression_name)] = clampf(value, 0.0, 1.0)
 		_request_update()
 
 
@@ -179,6 +195,7 @@ func _apply_expressions() -> void:
 		if expr_key in STANDARD_EXPRESSIONS:
 			val = get(expr_key)
 		else:
+			# expr_key came out of compile_vrm0_binds already in _custom_key form.
 			val = custom_expressions.get(expr_key, 0.0)
 
 		if val <= 0.0:
@@ -294,7 +311,7 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 
 		var expression_key: String = group.preset_name.to_lower()
 		if expression_key == "" or expression_key == "unknown":
-			expression_key = group.name.to_lower()
+			expression_key = _custom_key(group.name)
 		# VRM0's presetName enum spells these without a separator ("lookup", "lookleft", ...);
 		# normalize to the underscored property names so they hit the exported gaze properties
 		# above instead of silently falling through to custom_expressions.
