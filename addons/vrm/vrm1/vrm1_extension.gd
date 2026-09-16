@@ -416,9 +416,14 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 	var node_constraints_variant: Variant = state.get_additional_data("vrm1_node_constraints")
 	var has_node_constraints: bool = node_constraints_variant is Dictionary and not (node_constraints_variant as Dictionary).is_empty()
 	var need_node_names: bool = skeleton != null and (vrm_top_level.spring_bone != null or has_node_constraints)
-	var gltf_node_names: Dictionary[int, String] = (
-		VrmSceneComposer.resolve_all_node_names(state) if need_node_names else {}
-	)
+	# Declared and then filled, rather than a ternary: the ternary's type is inferred
+	# from BOTH arms, so the bare {} makes it a plain Dictionary and assigning that to
+	# a Dictionary[int, String] throws at runtime. It only bit models that took the
+	# empty arm - no spring bones and no node constraints - and the throw aborted the
+	# rest of _import_post, which is where the expression controller is built.
+	var gltf_node_names: Dictionary[int, String] = {}
+	if need_node_names:
+		gltf_node_names = VrmSceneComposer.resolve_all_node_names(state)
 
 	if skeleton != null and vrm_top_level.spring_bone != null:
 		var spring_sim: Vrm1SpringBoneSimulator = Vrm1SpringBoneSimulator.new()
