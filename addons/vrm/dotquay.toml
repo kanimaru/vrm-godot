@@ -1,0 +1,10 @@
+# Dotquay package manifest — ships inside this addon's folder, next to plugin.cfg.
+# It MUST live inside the folder consumers install, or its dependencies never reach them.
+# An addon repo is itself a valid dotquay project (SPEC.md §7.2).
+
+[package]
+name = "vrm"
+
+# [addons.kani_core]
+# git = "https://github.com/kani/kani_core"
+# version = "~1.4"
