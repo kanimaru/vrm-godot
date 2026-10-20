@@ -26,10 +26,15 @@ static func retarget_library_for_model(library: AnimationLibrary, model: Node, i
 	var skeleton: Skeleton3D = VRMUtil.find_skeleton(model)
 	if skeleton == null: return
 	var is_vrm0: bool = VRMUtil.is_vrm0(model)
+	# The skeleton's turn within the model, up to and including the model's own (a VRM0
+	# model faces backwards on its root). Not above it: whatever turns the model's parents
+	# places the avatar in the scene and must not be folded into the clip's rests.
 	var skeleton_rot: Quaternion = Quaternion.IDENTITY
 	var root_node: Node = skeleton.get_parent()
 	while root_node != null and root_node is Node3D:
 		skeleton_rot = root_node.transform.basis.orthonormalized().get_rotation_quaternion() * skeleton_rot
+		if root_node == model:
+			break
 		root_node = root_node.get_parent()
 	var world_rests: Array[Transform3D] = []
 	world_rests.resize(skeleton.get_bone_count())
