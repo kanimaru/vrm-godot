@@ -84,3 +84,70 @@ func test_a_turned_parent_does_not_change_a_turned_models_retarget() -> void:
 
 	_assert_same(_retargeted_key(under_turned), _retargeted_key(at_root),
 		"only the model's own facing enters the rests, not its parent's")
+
+
+# VMD with leg IK: the centre's height is a delta from the STANDING rest, like the IK targets.
+# A dance that opens crouched once had that crouch taken for standing, so every later stand put
+# the hips a crouch too high: legs straight, feet off the floor targets, the whole model bobbing
+# instead of bending its knees (a regression seen several times).
+
+const HIPS_REST_Y := 0.9
+const CROUCH := 0.1
+
+
+func _build_leg_model() -> Node3D:
+	var model := Node3D.new()
+	var skeleton := Skeleton3D.new()
+	model.add_child(skeleton)
+	var hips := skeleton.add_bone("hips")
+	skeleton.set_bone_rest(hips, Transform3D(Basis.IDENTITY, Vector3(0.0, HIPS_REST_Y, 0.0)))
+	var bones := {"hips": "hips"}
+	for side: String in ["left", "right"]:
+		var x := 0.1 if side == "left" else -0.1
+		var upper := skeleton.add_bone(side + "UpperLeg")
+		skeleton.set_bone_parent(upper, hips)
+		skeleton.set_bone_rest(upper, Transform3D(Basis.IDENTITY, Vector3(x, -0.05, 0.0)))
+		var lower := skeleton.add_bone(side + "LowerLeg")
+		skeleton.set_bone_parent(lower, upper)
+		skeleton.set_bone_rest(lower, Transform3D(Basis.IDENTITY, Vector3(0.0, -0.4, 0.0)))
+		var foot := skeleton.add_bone(side + "Foot")
+		skeleton.set_bone_parent(foot, lower)
+		skeleton.set_bone_rest(foot, Transform3D(Basis.IDENTITY, Vector3(0.0, -0.4, 0.0)))
+		for part: String in ["UpperLeg", "LowerLeg", "Foot"]:
+			bones[(side + part).to_lower()] = side + part
+	skeleton.reset_bone_poses()
+	model.set_meta("vrm_humanoid_bones", bones)
+	return model
+
+
+## Hips heights after retargeting a VMD clip that opens crouched and then stands.
+func _retargeted_hips_heights(with_leg_ik: bool) -> Array[float]:
+	var model := _build_leg_model()
+	add_child_autofree(model)
+	var library := AnimationLibrary.new()
+	library.set_meta(&"pre_scaled", true)
+	var anim := Animation.new()
+	var hips := anim.add_track(Animation.TYPE_POSITION_3D)
+	anim.track_set_path(hips, NodePath("%GeneralSkeleton:hips"))
+	anim.track_insert_key(hips, 0.0, Vector3(0.0, -CROUCH, 0.0))
+	anim.track_insert_key(hips, 1.0, Vector3.ZERO)
+	if with_leg_ik:
+		var ik := anim.add_track(Animation.TYPE_POSITION_3D)
+		anim.track_set_path(ik, NodePath("%leftLegIk"))
+		anim.track_insert_key(ik, 0.0, Vector3.ZERO)
+		anim.track_insert_key(ik, 1.0, Vector3.ZERO)
+	library.add_animation("default", anim)
+	VrmLibraryRetargeter.retarget_library_for_model(library, model, true)
+	var out := library.get_animation("default")
+	return [
+		(out.track_get_key_value(hips, 0) as Vector3).y,
+		(out.track_get_key_value(hips, 1) as Vector3).y,
+	]
+
+
+func test_an_ik_dance_that_opens_crouched_stands_at_rest_height() -> void:
+	var heights := _retargeted_hips_heights(true)
+
+	assert_almost_eq(heights[0], HIPS_REST_Y - CROUCH, 0.0001, "the opening crouch stays a crouch")
+	assert_almost_eq(heights[1], HIPS_REST_Y, 0.0001,
+		"standing up lands at the rest height, not a crouch above it")

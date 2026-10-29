@@ -252,9 +252,20 @@ static func retarget_library_for_model(library: AnimationLibrary, model: Node, i
 								has_leg_ik = true
 								break
 
+						# IK clips: the centre's HEIGHT is a delta from the standing rest, like the
+						# IK targets, so only its horizontal start comes off (the same horizontal
+						# offset the targets lose below). Taking off the whole first key made a
+						# dance that opens crouched (Caramelldansen: センター y −1.25) treat that
+						# crouch as standing: every later stand put the hips a crouch too high, out
+						# of reach of the floor targets, and the model bobbed on straight legs
+						# instead of bending its knees. FK-only clips keep the whole first key:
+						# their grounding derives the height from the leg keys instead.
+						var key0_offset: Vector3 = (
+							Vector3(pos_key0.x, 0.0, pos_key0.z) if has_leg_ik else pos_key0
+						)
 						for k: int in range(anim.track_get_key_count(i)):
 							var pos: Vector3 = anim.track_get_key_value(i, k)
-							var delta_pos: Vector3 = pos - pos_key0
+							var delta_pos: Vector3 = pos - key0_offset
 
 							var y_grounded: float = local_rest.y
 							if not has_leg_ik:
