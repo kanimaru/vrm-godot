@@ -206,3 +206,42 @@ func test_foot_rotation_sync_vrm0() -> void:
 
 	var foot_global_skel := skeleton.get_bone_global_pose(left_foot_idx).basis.orthonormalized().get_rotation_quaternion()
 	assert_eq_relative_rotation(foot_global_skel, expected_skel_q, "Foot skeleton-local global rotation should match expected pose")
+
+
+func test_setup_finds_the_bone_map_above_a_nested_skeleton() -> void:
+	# An avatar exported with its armature as a node of its own (luna.vrm: root > Kani >
+	# GeneralSkeleton) keeps the humanoid map on the root, not on the skeleton's parent. Reading
+	# the parent gave empty bone names, and SkeletonIK3D failed with "-1 == p_task->root_bone".
+	var model := Node3D.new()
+	add_child_autofree(model)
+	var armature := Node3D.new()
+	armature.name = "Kani"
+	model.add_child(armature)
+	var skeleton := Skeleton3D.new()
+	armature.add_child(skeleton)
+	var hips_idx := skeleton.add_bone("hips")
+	for side: String in ["left", "right"]:
+		var upper_idx := skeleton.add_bone(side + "UpperLeg")
+		var lower_idx := skeleton.add_bone(side + "LowerLeg")
+		var foot_idx := skeleton.add_bone(side + "Foot")
+		skeleton.set_bone_parent(upper_idx, hips_idx)
+		skeleton.set_bone_parent(lower_idx, upper_idx)
+		skeleton.set_bone_parent(foot_idx, lower_idx)
+	var foot_rest_basis := Basis(Vector3.RIGHT, deg_to_rad(-20.0))
+	skeleton.set_bone_rest(skeleton.find_bone("leftFoot"), Transform3D(foot_rest_basis, Vector3(0, -0.5, 0)))
+	skeleton.reset_bone_poses()
+	model.set_meta("vrm_humanoid_bones", {
+		"leftupperleg": "leftUpperLeg",
+		"leftfoot": "leftFoot",
+		"rightupperleg": "rightUpperLeg",
+		"rightfoot": "rightFoot",
+	})
+
+	var ik_controller := VrmIkController.new()
+	add_child_autofree(ik_controller)
+	ik_controller.setup(skeleton, model, false)
+
+	assert_eq(ik_controller.left_leg_ik.root_bone, &"leftUpperLeg", "left chain starts at the upper leg")
+	assert_eq(ik_controller.left_leg_ik.tip_bone, &"leftFoot", "left chain ends at the foot")
+	assert_eq(ik_controller.right_leg_ik.root_bone, &"rightUpperLeg", "right chain starts at the upper leg")
+	assert_eq_relative_rotation(ik_controller._left_foot_rest_skel, foot_rest_basis.get_rotation_quaternion(), "the foot rest is read from the mapped bone")

@@ -39,6 +39,9 @@ var _right_foot_rest_skel: Quaternion = Quaternion.IDENTITY
 var _left_toe_rest_skel: Quaternion = Quaternion.IDENTITY
 var _right_toe_rest_skel: Quaternion = Quaternion.IDENTITY
 
+# The node carrying the humanoid bone map, found at setup time.
+var _model: Node = null
+
 
 func setup(p_skeleton: Skeleton3D, p_target_parent: Node = null, p_is_vrm0: bool = false) -> void:
 	skeleton = p_skeleton
@@ -48,8 +51,9 @@ func setup(p_skeleton: Skeleton3D, p_target_parent: Node = null, p_is_vrm0: bool
 	# Ensure we run after AnimationPlayer to override its rotation tracks
 	process_priority = 10
 
-	var model: Node = skeleton.get_parent()
-	var target_parent: Node = p_target_parent if p_target_parent else model
+	_model = _find_model(skeleton)
+	var model: Node = _model
+	var target_parent: Node = p_target_parent if p_target_parent else skeleton.get_parent()
 
 	# Create Targets as children of the target parent (to avoid root motion bobbing)
 	left_target = Marker3D.new()
@@ -175,9 +179,8 @@ func _process(_delta: float) -> void:
 		)
 
 	# Toe IK Sync (Rotation only)
-	var model: Node = skeleton.get_parent()
-	var left_toe_name: StringName = VRMUtil.get_humanoid_bone(model, "leftToes")
-	var right_toe_name: StringName = VRMUtil.get_humanoid_bone(model, "rightToes")
+	var left_toe_name: StringName = VRMUtil.get_humanoid_bone(_model, "leftToes")
+	var right_toe_name: StringName = VRMUtil.get_humanoid_bone(_model, "rightToes")
 
 	if left_toe_target and not left_toe_name.is_empty():
 		_sync_bone_rotation(
@@ -192,6 +195,18 @@ func _process(_delta: float) -> void:
 				right_toe_target.global_transform.basis.get_rotation_quaternion(),
 				_right_toe_rest_skel
 		)
+
+
+## The nearest ancestor of the skeleton that carries the humanoid bone map. Usually the
+## skeleton's parent, but a model exported with its armature as a node of its own
+## (root > Armature > GeneralSkeleton) keeps the map on the root. Falls back to the parent.
+static func _find_model(p_skeleton: Skeleton3D) -> Node:
+	var node: Node = p_skeleton.get_parent()
+	while node != null:
+		if node.has_meta(VRMUtil.META_HUMANOID_BONES):
+			return node
+		node = node.get_parent()
+	return p_skeleton.get_parent()
 
 
 ## Returns the rest orientation of a named bone in skeleton-local space by
