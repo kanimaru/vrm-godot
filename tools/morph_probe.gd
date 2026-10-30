@@ -6,7 +6,7 @@ extends SceneTree
 ##
 ## Usage:
 ##   godot --headless --path . -s res://tools/morph_probe.gd \
-##       ++ file=res://assets/vmd/Caramell Dansen/motion.vmd
+##       ++ file=res://assets/private/vmd/Caramell Dansen/motion.vmd
 
 
 func _initialize() -> void:
@@ -14,7 +14,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var file: String = "res://assets/vmd/Caramell Dansen/motion.vmd"
+	var file: String = "res://assets/private/vmd/Caramell Dansen/motion.vmd"
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("file="):
 			file = arg.trim_prefix("file=")

@@ -8,15 +8,15 @@
 # GUT test run output
 gut_out.txt
 
-# graphify: machine-local paths and regenerable extraction cache
-graphify-out/.graphify_python
-graphify-out/.graphify_root
-graphify-out/cache/
+# Local tooling: Claude Code settings, skills and worktrees, and the graphify knowledge graph
+.claude/
+CLAUDE.md
+graphify-out/
 
-# Licensed VRM avatars - not redistributable, kept locally only
-/assets/luna/
-/assets/temptic/
-/assets/dove/
+# Licensed avatars and third-party animations (luna, temptic, dove, VRMA, vmd) - not
+# redistributable. They live in a separate local-only git repository checked out here; see
+# the "Private test assets" section of README.md.
+/assets/private/
 
 # Per-machine dotquay links; holds absolute paths.
 dotquay.local.toml

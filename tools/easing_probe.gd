@@ -5,7 +5,7 @@ extends SceneTree
 ##
 ## Usage:
 ##   godot --headless --path . -s res://tools/easing_probe.gd \
-##       ++ file=res://assets/vmd/Caramell Dansen/motion.vmd bone=leftUpperArm
+##       ++ file=res://assets/private/vmd/Caramell Dansen/motion.vmd bone=leftUpperArm
 
 
 func _initialize() -> void:
@@ -13,7 +13,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var file: String = "res://assets/vmd/Caramell Dansen/motion.vmd"
+	var file: String = "res://assets/private/vmd/Caramell Dansen/motion.vmd"
 	var bone: String = "leftUpperArm"
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("file="):

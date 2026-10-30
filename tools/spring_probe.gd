@@ -7,7 +7,7 @@ extends SceneTree
 ##
 ## Usage:
 ##   godot --headless --path . -s res://tools/spring_probe.gd \
-##       ++ model=res://assets/temptic/model.vrm frames=300
+##       ++ model=res://assets/private/temptic/model.vrm frames=300
 
 
 func _initialize() -> void:
@@ -15,7 +15,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var model_path: String = "res://assets/temptic/model.vrm"
+	var model_path: String = "res://assets/private/temptic/model.vrm"
 	var frames: int = 300
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("model="):

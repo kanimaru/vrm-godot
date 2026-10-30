@@ -10,9 +10,9 @@ extends EditorScript
 # 3. Go to File -> Run (or press Ctrl+Shift+X) to execute.
 # 4. Check the Output panel for the results.
 
-const VRMA_PATH = "res://assets/VRMA/Clapping.vrma"
-#const VRM_PATH = "res://assets/temptic/model.vrm"
-const VRM_PATH = "res://assets/luna/luna.vrm"
+const VRMA_PATH = "res://assets/private/VRMA/Clapping.vrma"
+#const VRM_PATH = "res://assets/private/temptic/model.vrm"
+const VRM_PATH = "res://assets/private/luna/luna.vrm"
 
 func _run() -> void:
 	print("\n================================================================================")

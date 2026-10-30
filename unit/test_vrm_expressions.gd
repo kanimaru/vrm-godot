@@ -21,9 +21,9 @@ func _register_extensions():
 	GLTFDocument.register_gltf_document_extension(vrm1)
 
 func test_vrm1_expressions_luna():
-	var path: String = "res://assets/luna/luna.vrm"
+	var path: String = "res://assets/private/luna/luna.vrm"
 	if not FileAccess.file_exists(path):
-		pending("Luna VRM is a licensed asset kept locally only (gitignored) - not present here")
+		pending("Luna VRM is a licensed asset kept in the local assets/private repo - not present here")
 		return
 		
 	var err: Error = doc.append_from_file(path, state)
@@ -58,9 +58,9 @@ func test_vrm1_expressions_luna():
 
 
 func test_vrm1_expression_call_spy():
-	var path: String = "res://assets/luna/luna.vrm"
+	var path: String = "res://assets/private/luna/luna.vrm"
 	if not FileAccess.file_exists(path):
-		pending("Luna VRM is a licensed asset kept locally only (gitignored) - not present here")
+		pending("Luna VRM is a licensed asset kept in the local assets/private repo - not present here")
 		return
 	doc.append_from_file(path, state)
 	var root: Node = doc.generate_scene(state)
@@ -138,9 +138,9 @@ func test_vrm1_missing_base_state_still_writes_morphs() -> void:
 
 
 func test_vrm0_expressions_temptic():
-	var vrm0_path: String = "res://assets/temptic/model.vrm"
+	var vrm0_path: String = "res://assets/private/temptic/model.vrm"
 	if not FileAccess.file_exists(vrm0_path):
-		pending("Temptic VRM is a licensed asset kept locally only (gitignored) - not present here")
+		pending("Temptic VRM is a licensed asset kept in the local assets/private repo - not present here")
 		return
 		
 	var v0_state = GLTFState.new()

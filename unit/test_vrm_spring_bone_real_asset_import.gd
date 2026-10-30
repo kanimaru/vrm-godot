@@ -16,9 +16,9 @@ func before_each() -> void:
 
 
 func test_vrm0_temptic_spring_bones_import_without_errors() -> void:
-	var path: String = "res://assets/temptic/model.vrm"
+	var path: String = "res://assets/private/temptic/model.vrm"
 	if not FileAccess.file_exists(path):
-		pending("Temptic VRM is a licensed asset kept locally only (gitignored) - not present here")
+		pending("Temptic VRM is a licensed asset kept in the local assets/private repo - not present here")
 		return
 
 	var vrm0 = load("res://addons/vrm/vrm0/vrm0_extension.gd").new()
@@ -45,9 +45,9 @@ func test_vrm0_temptic_spring_bones_import_without_errors() -> void:
 
 
 func test_vrm1_luna_spring_bones_import_without_errors() -> void:
-	var path: String = "res://assets/luna/luna.vrm"
+	var path: String = "res://assets/private/luna/luna.vrm"
 	if not FileAccess.file_exists(path):
-		pending("Luna VRM is a licensed asset kept locally only (gitignored) - not present here")
+		pending("Luna VRM is a licensed asset kept in the local assets/private repo - not present here")
 		return
 
 	var vrm1 = load("res://addons/vrm/vrm1/vrm1_extension.gd").new()

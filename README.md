@@ -56,15 +56,38 @@ are not available on older 4.x releases.
 
 ## Installation
 
-1. Copy `addons/vrm/` into your project's `addons/` folder (or add this repo as a submodule
-   and symlink it in).
+1. Download `vrm-addons-<version>.zip` from the
+   [releases page](https://github.com/kanimaru/vrm-godot/releases) and unzip it into your
+   project's root. It holds `addons/vrm/` and the `addons/Godot-MToon-Shader/` it needs.
 2. Enable **VRM Importer** under **Project → Project Settings → Plugins**.
 3. Drop a `.vrm`, `.vrma`, `.vmd`, or `.bvh` file into your project — Godot will import it
    automatically.
 
-This repo also bundles the [Godot-MToon-Shader](addons/Godot-MToon-Shader/) addon (the MToon
-shader implementation) and [GUT](addons/gut/) (the test framework) — both are required for
-the VRM importer to work and to run its test suite, respectively.
+With [dotquay](https://github.com/kanimaru/dotquay), add both addons to your project's
+`dotquay.toml` instead and run `dotquay install`:
+
+```toml
+[addons.vrm]
+git = "https://github.com/kanimaru/vrm-godot.git"
+branch = "main"
+path = "addons/vrm"
+
+[addons.mtoon-shader]
+git = "https://github.com/kanimaru/godot-mtoon-shader.git"
+branch = "main"
+path = "."
+install_as = "Godot-MToon-Shader"
+```
+
+### Working on this repository
+
+The MToon shader isn't committed here. After cloning, fetch it with dotquay:
+
+```bash
+dotquay install
+```
+
+[GUT](addons/gut/) (the test framework) is committed under `addons/gut/`.
 
 ## Usage
 
@@ -133,6 +156,14 @@ Unit tests live under `unit/` and use [GUT](https://github.com/bitwes/Gut). Run 
 godot --headless -s addons/gut/gut_cmdln.gd -gdir=unit -gexit
 ```
 
+### Private test assets
+
+Some tests and probes run against licensed avatars and third-party animations that can't be
+redistributed. They live in a separate git repository checked out at `assets/private/`
+(gitignored here), with the layout `assets/private/{luna,temptic,dove,VRMA,vmd}/`. Without
+it those tests report as pending, and everything else runs against the bundled
+`assets/tester/` avatars.
+
 ## Project structure
 
 ```
@@ -149,4 +180,5 @@ runtime/           Standalone demo/preview app built on top of the plugin (not p
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Third-party material and its licenses are listed in
+[NOTICE.md](NOTICE.md).

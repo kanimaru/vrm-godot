@@ -1,6 +1,6 @@
 [[addon]]
 name = "mtoon-shader"
-git = "git@gitlab.kemomi.de:wild-alliance/mtoon-shader.git"
+git = "https://github.com/kanimaru/godot-mtoon-shader.git"
 resolved = "dd4dd78fb4c682f9d22abe9d336da033466b76de"
 version = "0.0.0-20260827-dd4dd78"
 path = "."

@@ -53,7 +53,7 @@ func refresh_dances() -> void:
 	for child in _dance_list.get_children():
 		child.queue_free()
 		
-	var path := "res://assets/vmd/"
+	var path := "res://assets/private/vmd/"
 	if not DirAccess.dir_exists_absolute(path):
 		DirAccess.make_dir_recursive_absolute(path)
 		

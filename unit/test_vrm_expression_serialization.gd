@@ -95,9 +95,9 @@ func test_binds_survive_node_duplicate() -> void:
 ## The real thing, when the licensed asset is present locally: import, pack,
 ## instantiate, and expect the full expression set - not the empty list.
 func test_imported_luna_keeps_every_expression_through_pack() -> void:
-	var path := "res://assets/luna/luna.vrm"
+	var path := "res://assets/private/luna/luna.vrm"
 	if not FileAccess.file_exists(path):
-		pending("Luna VRM is a licensed asset kept locally only (gitignored) - not present here")
+		pending("Luna VRM is a licensed asset kept in the local assets/private repo - not present here")
 		return
 
 	GLTFDocument.register_gltf_document_extension(load("res://addons/vrm/vrm1/vrm1_extension.gd").new())
