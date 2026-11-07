@@ -2,14 +2,14 @@
 extends Node3D
 class_name Vrm1ExpressionController
 
-const RuntimeExpression = preload("uid://bkxff7fck6odq")  # res://addons/vrm/common/vrm_runtime_expression.gd
-const RuntimeMorphBind = preload("uid://dl3c1d3rmg7ee")  # res://addons/vrm/common/vrm_runtime_morph_bind.gd
-const RuntimeMaterialColorBind = preload("uid://blksmb8nanc73")  # res://addons/vrm/common/vrm_runtime_material_color_bind.gd
-const RuntimeTextureTransformBind = preload("uid://bdnn31bxcq3fh")  # res://addons/vrm/common/vrm_runtime_texture_transform_bind.gd
-const RuntimeNodeMorphState = preload("uid://n3jfgxag1ls3")  # res://addons/vrm/common/vrm_runtime_node_morph_state.gd
-const RuntimeMaterialColorState = preload("uid://628n3sjhgv68")  # res://addons/vrm/common/vrm_runtime_material_color_state.gd
-const RuntimeMaterialUVState = preload("uid://qt3oul1g0kj3")  # res://addons/vrm/common/vrm_runtime_material_uv_state.gd
-const Vrm1ActiveExpression = preload("uid://c1a6ryxsiq0bm")  # res://addons/vrm/common/vrm_active_expression.gd
+const RuntimeExpression = preload("../../common/vrm_runtime_expression.gd")
+const RuntimeMorphBind = preload("../../common/vrm_runtime_morph_bind.gd")
+const RuntimeMaterialColorBind = preload("../../common/vrm_runtime_material_color_bind.gd")
+const RuntimeTextureTransformBind = preload("../../common/vrm_runtime_texture_transform_bind.gd")
+const RuntimeNodeMorphState = preload("../../common/vrm_runtime_node_morph_state.gd")
+const RuntimeMaterialColorState = preload("../../common/vrm_runtime_material_color_state.gd")
+const RuntimeMaterialUVState = preload("../../common/vrm_runtime_material_uv_state.gd")
+const Vrm1ActiveExpression = preload("../../common/vrm_active_expression.gd")
 
 
 @export_range(0.0, 1.0) var happy: float = 0.0:
