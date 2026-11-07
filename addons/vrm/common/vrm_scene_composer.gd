@@ -14,6 +14,10 @@ const VRMUtil = preload("vrm_util.gd")
 const VrmMaterialVariantMapping = preload("vrm_material_variant_mapping.gd")
 const VrmMaterialVariantController = preload("vrm_material_variant_controller.gd")
 
+## GLTFState additional-data key under which apply_mtoon_materials records its
+## glTF material name -> MToon ShaderMaterial map.
+const MTOON_BY_NAME_KEY: StringName = &"vrm_mtoon_by_name"
+
 
 ## Resolves a single glTF node's Godot-facing name, preferring original_name and
 ## falling back to resource_name (Godot may rename nodes for uniqueness/validity).
@@ -188,6 +192,10 @@ static func apply_mtoon_materials(root: Node, mtoon_configs: Variant, state: GLT
 		if outline_mat != null:
 			active_mtoons.append(outline_mat)
 
+	# Kept for material variants: a variant's target material is often on no surface
+	# by default, so find_material_by_name cannot see its MToon replacement.
+	state.set_additional_data(MTOON_BY_NAME_KEY, name_to_shader)
+
 	if name_to_shader.is_empty():
 		return
 
@@ -284,41 +292,85 @@ static func parse_material_variants(state: GLTFState) -> Dictionary:
 	return result
 
 
-## Walks root's MeshInstance3D surfaces once, resolving each surface whose default
-## material's resource_name appears in mappings_by_default_name (from parse_material_variants)
-## into a VrmMaterialVariantMapping with live Material references. Must run after
-## apply_mtoon_materials, or resolved materials would be the stale pre-swap ones - same
-## ordering requirement as find_material_by_name. The default material's resource_name is
-## read from the mesh RESOURCE's own surface material (mesh_inst.mesh), not the surface
-## override - apply_mtoon_materials never touches the former, so it reliably still holds
-## the original glTF material identity even after the swap.
-static func build_material_variant_entries(root: Node, mappings_by_default_name: Dictionary) -> Array[VrmMaterialVariantMapping]:
+## Walks root's mesh surfaces once, resolving each surface whose default material's
+## resource_name appears in mappings_by_default_name (from parse_material_variants) into a
+## VrmMaterialVariantMapping. Must run after apply_mtoon_materials, or resolved materials
+## would be the stale pre-swap ones - same ordering requirement as find_material_by_name.
+## The default material's resource_name is read from the mesh RESOURCE's own surface
+## material, not the surface override; apply_mtoon_materials keeps that name either way.
+##
+## Both MeshInstance3D and ImporterMeshInstance3D are walked: the editor importer runs
+## this while meshes are still the latter, and walking only MeshInstance3D found nothing.
+## A target is looked up live first, then in [param materials_by_name] (the MToon or
+## glTF material by name), because a variant-only material is on no surface by default
+## and so is invisible to find_material_by_name.
+static func build_material_variant_entries(
+		root: Node,
+		mappings_by_default_name: Dictionary,
+		materials_by_name: Dictionary = {},
+) -> Array[VrmMaterialVariantMapping]:
 	var entries: Array[VrmMaterialVariantMapping] = []
 	if mappings_by_default_name.is_empty():
 		return entries
 
-	for mesh_inst: MeshInstance3D in root.find_children("", "MeshInstance3D", true, false):
-		if mesh_inst.mesh == null:
-			continue
-		for surface_idx: int in range(mesh_inst.mesh.get_surface_count()):
-			var default_mat: Material = mesh_inst.mesh.surface_get_material(surface_idx)
+	for node: Node in root.find_children("*", "", true, false):
+		var defaults: Array[Material] = _surface_default_materials(node)
+		for surface_idx: int in range(defaults.size()):
+			var default_mat: Material = defaults[surface_idx]
 			if default_mat == null or not mappings_by_default_name.has(default_mat.resource_name):
 				continue
 
 			var entry := VrmMaterialVariantMapping.new()
-			entry.mesh_instance = mesh_inst
+			# The controller is a child of root, hence "../".
+			entry.mesh_path = NodePath("../" + String(root.get_path_to(node)))
 			entry.surface = surface_idx
 
 			var variant_targets: Dictionary = mappings_by_default_name[default_mat.resource_name]
 			for variant_idx: int in variant_targets:
-				var resolved: Material = find_material_by_name(root, variant_targets[variant_idx])
+				var target_name: String = variant_targets[variant_idx]
+				var resolved: Material = find_material_by_name(root, target_name)
+				if resolved == null:
+					resolved = materials_by_name.get(target_name) as Material
 				if resolved != null:
 					entry.variant_materials[variant_idx] = resolved
+				else:
+					push_warning("VrmSceneComposer: material variant %d of '%s' skipped, no material named '%s'"
+						% [variant_idx, default_mat.resource_name, target_name])
 
 			if not entry.variant_materials.is_empty():
 				entries.append(entry)
 
 	return entries
+
+
+## The mesh resource's own material per surface, for a baked or an import-time mesh node;
+## empty for any other node.
+static func _surface_default_materials(node: Node) -> Array[Material]:
+	var materials: Array[Material] = []
+	if node is MeshInstance3D:
+		var mesh: Mesh = (node as MeshInstance3D).mesh
+		if mesh != null:
+			for idx: int in range(mesh.get_surface_count()):
+				materials.append(mesh.surface_get_material(idx))
+	elif node is ImporterMeshInstance3D:
+		var importer_mesh: ImporterMesh = (node as ImporterMeshInstance3D).mesh
+		if importer_mesh != null:
+			for idx: int in range(importer_mesh.get_surface_count()):
+				materials.append(importer_mesh.get_surface_material(idx))
+	return materials
+
+
+## Every material of [param state] by resource_name, with the MToon replacements
+## apply_mtoon_materials recorded taking precedence over the glTF originals.
+static func _materials_by_name(state: GLTFState) -> Dictionary:
+	var by_name: Dictionary = {}
+	for mat: Material in state.get_materials():
+		if mat != null and not mat.resource_name.is_empty():
+			by_name[mat.resource_name] = mat
+	var mtoon_by_name: Variant = state.get_additional_data(MTOON_BY_NAME_KEY)
+	if mtoon_by_name is Dictionary:
+		by_name.merge(mtoon_by_name, true)
+	return by_name
 
 
 ## Parses and attaches a KHR_materials_variants runtime controller to root, if the file
@@ -329,7 +381,8 @@ static func attach_material_variant_controller(root: Node, state: GLTFState) -> 
 	if variant_names.is_empty():
 		return
 
-	var entries: Array[VrmMaterialVariantMapping] = build_material_variant_entries(root, parsed["mappings_by_default_name"])
+	var entries: Array[VrmMaterialVariantMapping] = build_material_variant_entries(
+		root, parsed["mappings_by_default_name"], _materials_by_name(state))
 	if entries.is_empty():
 		return
 

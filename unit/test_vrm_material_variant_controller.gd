@@ -18,9 +18,10 @@ func _make_mesh_instance() -> MeshInstance3D:
 	return mesh_inst
 
 
+## The mesh must already be a child of the root the controller will sit under.
 func _make_mapping(mesh_inst: MeshInstance3D, surface: int, variant_materials: Dictionary) -> VrmMaterialVariantMapping:
 	var mapping := VrmMaterialVariantMapping.new()
-	mapping.mesh_instance = mesh_inst
+	mapping.mesh_path = NodePath("../" + String(mesh_inst.name))
 	mapping.surface = surface
 	for k: int in variant_materials:
 		mapping.variant_materials[k] = variant_materials[k]
@@ -143,3 +144,56 @@ func test_multiple_mapped_surfaces_all_switch_together() -> void:
 
 	assert_eq(mesh_a.get_surface_override_material(0), target_a)
 	assert_eq(mesh_b.get_surface_override_material(0), target_b)
+
+
+## The editor importer saves the avatar scene after the controller is attached. Its
+## names and mappings used to be plain vars on RefCounted values holding a node
+## reference, so an imported avatar came back with a controller that knew no variants.
+func test_variants_survive_packing_the_scene() -> void:
+	var root := Node3D.new()
+	autofree(root)
+	var mesh_inst := _make_mesh_instance()
+	mesh_inst.name = "Outfit"
+	root.add_child(mesh_inst)
+	mesh_inst.owner = root
+
+	var target_mat := StandardMaterial3D.new()
+	target_mat.resource_name = "Outfit_Winter"
+	var controller := VrmMaterialVariantController.new()
+	controller.name = "VrmMaterialVariantController"
+	root.add_child(controller)
+	controller.owner = root
+	controller.variant_names = ["Default", "Winter"]
+	controller.mappings = [_make_mapping(mesh_inst, 0, {1: target_mat})]
+
+	var packed := PackedScene.new()
+	assert_eq(packed.pack(root), OK)
+	var copy: Node3D = packed.instantiate()
+	add_child_autofree(copy)
+	var copy_controller: VrmMaterialVariantController = copy.get_node("VrmMaterialVariantController")
+	var copy_mesh: MeshInstance3D = copy.get_node("Outfit")
+
+	assert_eq(copy_controller.get_variant_names(), (["Default", "Winter"] as Array[String]),
+		"variant names must be stored with the scene")
+	assert_true(copy_controller.set_variant_by_name("Winter"))
+	var applied: Material = copy_mesh.get_surface_override_material(0)
+	assert_not_null(applied, "the stored mapping must reach the instanced mesh")
+	if applied != null:
+		assert_eq(applied.resource_name, "Outfit_Winter")
+
+
+func test_a_mapping_whose_mesh_is_gone_is_skipped() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var mapping := VrmMaterialVariantMapping.new()
+	mapping.mesh_path = NodePath("../Missing")
+	mapping.surface = 0
+	mapping.variant_materials[1] = StandardMaterial3D.new()
+	var controller := VrmMaterialVariantController.new()
+	root.add_child(controller)
+	controller.variant_names = ["Default", "Winter"]
+	controller.mappings = [mapping]
+
+	controller.set_variant(1)
+
+	assert_eq(controller.get_current_variant(), 1, "the other mappings still switch")
