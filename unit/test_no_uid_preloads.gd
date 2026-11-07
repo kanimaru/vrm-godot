@@ -8,13 +8,15 @@ extends GutTest
 ## on a first open. Paths resolve without the cache; drag-and-drop into the script
 ## editor writes UIDs, which is how they crept in.
 
-const ADDON_ROOT := "res://addons/vrm"
+## runtime/ ships next to the addon and is parsed in the same first scan.
+const SCRIPT_ROOTS: Array[String] = ["res://addons/vrm", "res://runtime"]
 const UID_LOAD := "load(\"uid://"
 
 
 func test_no_script_loads_by_uid() -> void:
 	var offenders: Array[String] = []
-	_collect_uid_loads(ADDON_ROOT, offenders)
+	for root: String in SCRIPT_ROOTS:
+		_collect_uid_loads(root, offenders)
 	assert_eq(offenders, [] as Array[String],
 			"load these by relative path instead:\n" + "\n".join(offenders))
 
