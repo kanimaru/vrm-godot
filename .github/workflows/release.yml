@@ -4,8 +4,8 @@
 # - Every push to main and every pull request builds the zip and keeps it as a workflow artifact.
 # - A pushed tag named v* (e.g. v0.1.0) also publishes it as a GitHub release.
 #
-# The repository is a push mirror of GitLab's wild-alliance/vrm-addon, so tags pushed there
-# trigger this workflow too.
+# GitLab's wild-alliance/vrm-addon publishes a cleaned copy of its history here (publish:github in
+# .gitlab-ci.yml), tags included, so a tag pushed on GitLab triggers this workflow too.
 name: release
 
 on:

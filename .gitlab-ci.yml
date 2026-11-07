@@ -10,18 +10,19 @@
 # forced. If it gets rejected, the cleaned history changed, usually because
 # .github-publish-strip was edited; force-push main and the tags to GitHub once by hand.
 #
-# Needs the CI/CD variable GITHUB_PUBLISH_TOKEN (masked, protected): a fine-grained GitHub token
-# for kanimaru/vrm-godot with Contents and Workflows read/write. Workflows is needed because the
-# pushed commits contain .github/workflows/. Without the variable the job doesn't run.
+# Pushes over SSH with the write-enabled deploy key "Gitlab Deploykey" on kanimaru/vrm-godot. Its
+# private key goes into the CI/CD variable GITHUB_DEPLOY_KEY (type File, protected). Without the
+# variable the job doesn't run. GitHub's host key is pinned below, from `gh api meta` (2026-11-07).
 
 publish:github:
   stage: deploy
   image: python:3.12
   variables:
     GIT_STRATEGY: none
-    GITHUB_REPOSITORY_URL: https://github.com/kanimaru/vrm-godot.git
+    GITHUB_REPOSITORY_URL: git@github.com:kanimaru/vrm-godot.git
+    GITHUB_HOST_KEY: github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
   rules:
-    - if: $GITHUB_PUBLISH_TOKEN == null || $GITHUB_PUBLISH_TOKEN == ""
+    - if: $GITHUB_DEPLOY_KEY == null || $GITHUB_DEPLOY_KEY == ""
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
@@ -31,5 +32,10 @@ publish:github:
     - cd repo.git
     - git show "refs/heads/$CI_DEFAULT_BRANCH:.github-publish-strip" > ../strip.txt
     - git filter-repo --force --quiet --invert-paths --paths-from-file ../strip.txt
-    - git remote add github "https://x-access-token:${GITHUB_PUBLISH_TOKEN}@${GITHUB_REPOSITORY_URL#https://}"
+    - install -d -m 700 ~/.ssh
+    - install -m 600 "$GITHUB_DEPLOY_KEY" ~/.ssh/id_github
+    - sed -i -e '$a\' ~/.ssh/id_github  # ssh rejects a key file without a final newline
+    - echo "$GITHUB_HOST_KEY" > ~/.ssh/known_hosts
+    - export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_github -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+    - git remote add github "$GITHUB_REPOSITORY_URL"
     - git push github "refs/heads/$CI_DEFAULT_BRANCH:refs/heads/main" 'refs/tags/*:refs/tags/*'
