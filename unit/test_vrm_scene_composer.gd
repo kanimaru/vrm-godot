@@ -536,9 +536,69 @@ func test_build_material_variant_entries_resolves_live_materials() -> void:
 	var entries: Array[VrmMaterialVariantMapping] = VrmSceneComposer.build_material_variant_entries(root, mappings_by_default_name)
 
 	assert_eq(entries.size(), 1)
-	assert_eq(entries[0].mesh_instance, mesh_inst)
+	assert_eq(entries[0].mesh_path, NodePath("../" + String(root.get_path_to(mesh_inst))))
 	assert_eq(entries[0].surface, 0)
 	assert_eq(entries[0].variant_materials[0], target_mat)
+
+
+## The editor importer composes the scene while meshes are still
+## ImporterMeshInstance3D; a MeshInstance3D-only walk produced no entries at all.
+func test_build_material_variant_entries_covers_import_time_meshes() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var importer_mesh := ImporterMesh.new()
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3.ZERO, Vector3.RIGHT, Vector3.UP])
+	importer_mesh.add_surface(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, _make_material("Outfit_Default"))
+	var importer_inst := ImporterMeshInstance3D.new()
+	importer_inst.name = "Outfit"
+	importer_inst.mesh = importer_mesh
+	root.add_child(importer_inst)
+	var winter := _make_material("Outfit_Winter")
+
+	var entries: Array[VrmMaterialVariantMapping] = VrmSceneComposer.build_material_variant_entries(
+		root, {"Outfit_Default": {1: "Outfit_Winter"}}, {"Outfit_Winter": winter})
+
+	assert_eq(entries.size(), 1)
+	assert_eq(entries[0].mesh_path, NodePath("../Outfit"))
+	assert_eq(entries[0].variant_materials[1], winter)
+
+
+## A variant-only material sits on no surface until the variant is chosen, so the
+## live lookup cannot see it; the by-name fallback must supply it.
+func test_build_material_variant_entries_falls_back_to_materials_by_name() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var mesh_inst := _make_mesh_with_material(_make_material("Outfit_Default"))
+	root.add_child(mesh_inst)
+	var winter := _make_material("Outfit_Winter")
+
+	var without: Array[VrmMaterialVariantMapping] = VrmSceneComposer.build_material_variant_entries(
+		root, {"Outfit_Default": {1: "Outfit_Winter"}})
+	var with_fallback: Array[VrmMaterialVariantMapping] = VrmSceneComposer.build_material_variant_entries(
+		root, {"Outfit_Default": {1: "Outfit_Winter"}}, {"Outfit_Winter": winter})
+
+	assert_true(without.is_empty(), "nothing on any surface is named Outfit_Winter")
+	assert_eq(with_fallback.size(), 1)
+	assert_eq(with_fallback[0].variant_materials[1], winter)
+
+
+func test_apply_mtoon_materials_records_its_materials_by_name() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var placeholder := _make_material("Outfit_Winter")
+	var state := GLTFState.new()
+	var materials: Array[Material] = [placeholder]
+	state.materials = materials
+
+	# No surface uses the material, as with a variant-only one.
+	VrmSceneComposer.apply_mtoon_materials(root, [{}], state)
+
+	var by_name: Variant = state.get_additional_data(VrmSceneComposer.MTOON_BY_NAME_KEY)
+	assert_true(by_name is Dictionary)
+	assert_true((by_name as Dictionary).get("Outfit_Winter") is ShaderMaterial,
+		"the MToon replacement must be findable by name even when no surface shows it")
 
 
 func test_build_material_variant_entries_skips_surfaces_with_no_mapping() -> void:

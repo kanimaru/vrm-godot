@@ -506,3 +506,161 @@ func test_custom_expression_spellings_share_one_slot() -> void:
 
 	assert_eq(_controller.custom_expressions.size(), 1, "one expression, one key")
 	assert_almost_eq(_controller.get_expression("jawOpen"), 0.2, 0.0001, "the later write wins")
+
+
+# ---------------------------------------------------------------------------
+# Material binds at editor import, and against meshes with several materials.
+# compile_vrm0_binds runs in _import_post, while meshes are still
+# ImporterMeshInstance3D; the old MeshInstance3D walk found none, so every VRM0
+# material colour/UV bind of an editor-imported avatar was dropped in silence.
+# It also bound the mesh's surface 0 whatever surface matched, and kept the base
+# per mesh, so releasing one material's bind wrote its base into the others.
+# ---------------------------------------------------------------------------
+
+func _rim_material(mat_name: String, rim: Color) -> ShaderMaterial:
+	# Deliberately not the MToon builder, so this runs without the MToon addon.
+	var shader := Shader.new()
+	shader.code = "shader_type spatial;\nuniform vec4 _RimColor;\nuniform vec4 _MainTex_ST;"
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.resource_name = mat_name
+	mat.set_shader_parameter("_RimColor", rim)
+	mat.set_shader_parameter("_MainTex_ST", Vector4(1.0, 1.0, 0.0, 0.0))
+	return mat
+
+
+func _rim_group(preset: String, mat_name: String, target: Color) -> Vrm0BlendShapeGroup:
+	var group := _make_group(preset)
+	var mbind := Vrm0MaterialBind.new()
+	mbind.material_name = mat_name
+	mbind.property_name = "_RimColor"
+	mbind.target_value = PackedFloat32Array([target.r, target.g, target.b, target.a])
+	group.material_binds.append(mbind)
+	return group
+
+
+func _triangle_arrays() -> Array:
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3.ZERO, Vector3.RIGHT, Vector3.UP])
+	return arrays
+
+
+func test_material_bind_resolves_on_an_import_time_mesh() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var face := _rim_material("Face", Color(0.2, 0.2, 0.2, 1.0))
+	var importer_mesh := ImporterMesh.new()
+	importer_mesh.add_surface(Mesh.PRIMITIVE_TRIANGLES, _triangle_arrays(), [], {}, face)
+	var importer_inst := ImporterMeshInstance3D.new()
+	importer_inst.mesh = importer_mesh
+	root.add_child(importer_inst)
+
+	var master := Vrm0BlendShape.new()
+	master.blend_shape_groups.append(_rim_group("joy", "Face", Color.RED))
+	_controller.compile_vrm0_binds(master, GLTFState.new(), root)
+
+	var expression: RuntimeExpression = _controller._binds["joy"]
+	assert_eq(expression.color_binds.size(), 1, "the bind must survive an import-time scene")
+	if expression.color_binds.size() == 1:
+		assert_eq(expression.color_binds[0].material, face)
+
+
+func _two_material_body(root: Node3D, first: Material, second: Material) -> MeshInstance3D:
+	var array_mesh := ArrayMesh.new()
+	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _triangle_arrays())
+	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _triangle_arrays())
+	var mesh_inst := MeshInstance3D.new()
+	mesh_inst.name = "Body"
+	mesh_inst.mesh = array_mesh
+	root.add_child(mesh_inst)
+	mesh_inst.set_surface_override_material(0, first)
+	mesh_inst.set_surface_override_material(1, second)
+	return mesh_inst
+
+
+func test_a_bind_on_the_second_surface_targets_that_material() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	root.add_child(_controller)
+	var skin := _rim_material("Skin", Color(0.2, 0.2, 0.2, 1.0))
+	var cheek := _rim_material("Cheek", Color(0.2, 0.2, 0.2, 1.0))
+	_two_material_body(root, skin, cheek)
+
+	var master := Vrm0BlendShape.new()
+	master.blend_shape_groups.append(_rim_group("joy", "Cheek", Color.RED))
+	_controller.compile_vrm0_binds(master, GLTFState.new(), root)
+	_controller.set_expression("joy", 1.0)
+	_controller._apply_expressions()
+
+	assert_almost_eq(Color(cheek.get_shader_parameter("_RimColor")).r, 1.0, 0.001,
+		"the bind names Cheek, on surface 1")
+	assert_almost_eq(Color(skin.get_shader_parameter("_RimColor")).r, 0.2, 0.001,
+		"surface 0's material must not receive Cheek's bind")
+
+
+func test_releasing_a_bind_leaves_the_other_materials_of_the_mesh_alone() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	root.add_child(_controller)
+	var skin := _rim_material("Skin", Color(0.7, 0.7, 0.7, 1.0))
+	var cheek := _rim_material("Cheek", Color(0.2, 0.2, 0.2, 1.0))
+	_two_material_body(root, skin, cheek)
+
+	var master := Vrm0BlendShape.new()
+	master.blend_shape_groups.append(_rim_group("joy", "Cheek", Color.RED))
+	_controller.compile_vrm0_binds(master, GLTFState.new(), root)
+	_controller.set_expression("joy", 1.0)
+	_controller._apply_expressions()
+	_controller.set_expression("joy", 0.0)
+	_controller._apply_expressions()
+
+	assert_almost_eq(Color(skin.get_shader_parameter("_RimColor")).r, 0.7, 0.001,
+		"Skin must keep its own colour, not take Cheek's base")
+	assert_almost_eq(Color(cheek.get_shader_parameter("_RimColor")).r, 0.2, 0.001)
+
+
+## UniVRM moves a material value from its base toward the target by the weight.
+## Writing target * weight darkened a half-weight colour instead.
+func test_half_weight_colour_lies_halfway_between_base_and_target() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	root.add_child(_controller)
+	var skin := _rim_material("Skin", Color(0.2, 0.2, 0.2, 1.0))
+	var cheek := _rim_material("Cheek", Color(0.2, 0.2, 0.2, 1.0))
+	_two_material_body(root, skin, cheek)
+
+	var master := Vrm0BlendShape.new()
+	master.blend_shape_groups.append(_rim_group("joy", "Cheek", Color(1.0, 0.2, 0.2, 1.0)))
+	_controller.compile_vrm0_binds(master, GLTFState.new(), root)
+	_controller.set_expression("joy", 0.5)
+	_controller._apply_expressions()
+
+	var rim := Color(cheek.get_shader_parameter("_RimColor"))
+	assert_almost_eq(rim.r, 0.6, 0.001, "halfway from 0.2 to 1.0")
+	assert_almost_eq(rim.g, 0.2, 0.001, "a channel the bind does not change stays at its base")
+
+
+## Temptic's angry bind targets _Color with [1, 0, 0]: RGB, no alpha. Requiring
+## four values dropped it.
+func test_a_colour_target_without_alpha_still_binds() -> void:
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var skin := _rim_material("Skin", Color(0.2, 0.2, 0.2, 1.0))
+	var cheek := _rim_material("Cheek", Color(0.2, 0.2, 0.2, 1.0))
+	_two_material_body(root, skin, cheek)
+	var group := _make_group("angry")
+	var mbind := Vrm0MaterialBind.new()
+	mbind.material_name = "Cheek"
+	mbind.property_name = "_RimColor"
+	mbind.target_value = PackedFloat32Array([1.0, 0.0, 0.0])
+	group.material_binds.append(mbind)
+	var master := Vrm0BlendShape.new()
+	master.blend_shape_groups.append(group)
+
+	_controller.compile_vrm0_binds(master, GLTFState.new(), root)
+
+	var expression: RuntimeExpression = _controller._binds["angry"]
+	assert_eq(expression.color_binds.size(), 1)
+	if expression.color_binds.size() == 1:
+		assert_eq(expression.color_binds[0].color, Color(1.0, 0.0, 0.0, 1.0))

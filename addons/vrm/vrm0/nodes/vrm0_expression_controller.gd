@@ -56,8 +56,10 @@ var expressions: Array[String]:
 
 var _dirty: bool = false
 var _base_morphs: Dictionary[NodePath, RuntimeNodeMorphState] = {}
-var _base_material_colors: Dictionary[NodePath, RuntimeMaterialColorState] = {}
-var _base_material_uvs: Dictionary[NodePath, RuntimeMaterialUVState] = {}
+## Keyed by the Material itself, like the VRM1 controller: a mesh can carry several
+## materials, and keying by mesh path wrote one material's base into all of them.
+var _base_material_colors: Dictionary[Material, RuntimeMaterialColorState] = {}
+var _base_material_uvs: Dictionary[Material, RuntimeMaterialUVState] = {}
 
 
 ## Standard VRM Expressions
@@ -169,25 +171,15 @@ func _apply_expressions() -> void:
 				node.set_blend_shape_value(idx, base_state.blend_shapes[idx])
 
 	# Reset material colors to base state
-	for mat_path: NodePath in _base_material_colors:
-		var node: Node = get_node_or_null(mat_path)
-		if node and node is MeshInstance3D:
-			for surface_idx: int in range(node.get_surface_override_material_count()):
-				var mat: Material = node.get_surface_override_material(surface_idx)
-				if mat:
-					var base_state: RuntimeMaterialColorState = _base_material_colors[mat_path]
-					for prop in base_state.properties:
-						_set_material_color(mat, prop, base_state.properties[prop])
+	for mat: Material in _base_material_colors:
+		var color_state: RuntimeMaterialColorState = _base_material_colors[mat]
+		for prop: String in color_state.properties:
+			_set_material_color(mat, prop, color_state.properties[prop])
 
 	# Reset material UVs to base state
-	for mat_path: NodePath in _base_material_uvs:
-		var node: Node = get_node_or_null(mat_path)
-		if node and node is MeshInstance3D:
-			for surface_idx: int in range(node.get_surface_override_material_count()):
-				var mat: Material = node.get_surface_override_material(surface_idx)
-				if mat:
-					var base_state: RuntimeMaterialUVState = _base_material_uvs[mat_path]
-					_set_material_uv(mat, base_state.scale, base_state.offset)
+	for mat: Material in _base_material_uvs:
+		var uv_state: RuntimeMaterialUVState = _base_material_uvs[mat]
+		_set_material_uv(mat, uv_state.scale, uv_state.offset)
 
 	# Accumulate and apply all active expressions
 	for expr_key in _binds:
@@ -219,15 +211,27 @@ func _apply_expressions() -> void:
 				# capping per contribution reaches the same place as capping the sum.
 				node.set_blend_shape_value(morph_bind.index, clampf(current + (val * morph_bind.weight), 0.0, 1.0))
 
-		# Material color binds (uses RuntimeMaterialColorBind fields: material, prop, color)
-		for material_color_bind: RuntimeMaterialColorBind in expression.color_binds:
-			if material_color_bind.material:
-				_set_material_color(material_color_bind.material, material_color_bind.prop, material_color_bind.color * val)
+		# Material binds move the value from its base toward the target by the weight,
+		# adding onto what earlier expressions left (UniVRM's MaterialValueBindingMerger,
+		# and the VRM1 controller here). Writing target * weight instead darkened a
+		# half-weight colour toward black and shrank a half-weight UV scale toward zero.
+		for color_bind: RuntimeMaterialColorBind in expression.color_binds:
+			var color_state: RuntimeMaterialColorState = _base_material_colors.get(color_bind.material)
+			if color_state == null or not color_state.properties.has(color_bind.prop):
+				continue
+			var base_color: Color = color_state.properties[color_bind.prop]
+			var current_color: Color = _get_material_color(color_bind.material, color_bind.prop)
+			_set_material_color(color_bind.material, color_bind.prop,
+				current_color + (color_bind.color - base_color) * val)
 
-		# Texture transform binds (uses RuntimeTextureTransformBind fields: material, scale, offset)
-		for texture_transform_bind: RuntimeTextureTransformBind in expression.uv_binds:
-			if texture_transform_bind.material:
-				_set_material_uv(texture_transform_bind.material, texture_transform_bind.scale * val, texture_transform_bind.offset * val)
+		for uv_bind: RuntimeTextureTransformBind in expression.uv_binds:
+			var uv_base: RuntimeMaterialUVState = _base_material_uvs.get(uv_bind.material)
+			if uv_base == null:
+				continue
+			var current_uv: RuntimeMaterialUVState = _get_material_uv(uv_bind.material)
+			_set_material_uv(uv_bind.material,
+				current_uv.scale + (uv_bind.scale - uv_base.scale) * val,
+				current_uv.offset + (uv_bind.offset - uv_base.offset) * val)
 
 
 ## Rebuilds the base-state snapshots from the LIVE meshes/materials when they
@@ -256,44 +260,27 @@ func _ensure_base_state() -> void:
 				morph_state.blend_shapes[morph_bind.index] = node.get_blend_shape_value(morph_bind.index)
 
 		for color_bind: RuntimeMaterialColorBind in expression.color_binds:
-			if color_bind.material == null:
-				continue
-			var color_mesh_path: NodePath = _mesh_path_for_material(color_bind.material)
-			if color_mesh_path.is_empty():
-				continue
-			if not _base_material_colors.has(color_mesh_path):
-				_base_material_colors[color_mesh_path] = RuntimeMaterialColorState.new()
-			var color_state: RuntimeMaterialColorState = _base_material_colors[color_mesh_path]
-			if not color_state.properties.has(color_bind.prop):
-				color_state.properties[color_bind.prop] = _get_material_color(color_bind.material, color_bind.prop)
+			_capture_base_color(color_bind.material, color_bind.prop)
 
 		for uv_bind: RuntimeTextureTransformBind in expression.uv_binds:
-			if uv_bind.material == null:
-				continue
-			var uv_mesh_path: NodePath = _mesh_path_for_material(uv_bind.material)
-			if uv_mesh_path.is_empty():
-				continue
-			if not _base_material_uvs.has(uv_mesh_path):
-				_base_material_uvs[uv_mesh_path] = _get_material_uv(uv_bind.material)
+			_capture_base_uv(uv_bind.material)
 
 
-## The reset loops address materials through their mesh's NodePath; a lazily
-## rebuilt base has only the Material reference, so walk the avatar for the
-## mesh whose active surface material is [param mat].
-func _mesh_path_for_material(mat: Material) -> NodePath:
-	var root: Node = get_parent()
-	if root == null:
-		return NodePath()
-	var stack: Array[Node] = [root]
-	while not stack.is_empty():
-		var node: Node = stack.pop_back()
-		if node is MeshInstance3D:
-			var mesh_instance := node as MeshInstance3D
-			for surface_idx: int in range(mesh_instance.get_surface_override_material_count()):
-				if mesh_instance.get_active_material(surface_idx) == mat:
-					return NodePath("../" + _get_path_from_root(mesh_instance, root))
-		stack.append_array(node.get_children())
-	return NodePath()
+## Records [param mat]'s current [param prop] as its base unless one is already held.
+func _capture_base_color(mat: Material, prop: String) -> void:
+	if mat == null:
+		return
+	var color_state: RuntimeMaterialColorState = _base_material_colors.get_or_add(
+		mat, RuntimeMaterialColorState.new())
+	if not color_state.properties.has(prop):
+		color_state.properties[prop] = _get_material_color(mat, prop)
+
+
+## Records [param mat]'s current UV scale and offset as its base unless already held.
+func _capture_base_uv(mat: Material) -> void:
+	if mat == null or _base_material_uvs.has(mat):
+		return
+	_base_material_uvs[mat] = _get_material_uv(mat)
 
 
 func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFState, root_node: Node) -> void:
@@ -362,32 +349,29 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 			if prop_info.is_empty():
 				continue
 
-			var target_mesh: MeshInstance3D = _find_mesh_with_material(root_node, material_bind.material_name)
-			if not target_mesh:
+			# By name, not by mesh: at editor import the meshes are still
+			# ImporterMeshInstance3D, which a MeshInstance3D walk never found, and a
+			# mesh's surface 0 is not necessarily the surface carrying this material.
+			var mat: Material = VrmSceneComposer.find_material_by_name(root_node, material_bind.material_name)
+			if mat == null:
+				push_warning("Vrm0ExpressionController: %s bind of '%s' skipped, no surface uses material '%s'"
+					% [material_bind.property_name, expression_key, material_bind.material_name])
 				continue
 
-			var mat: Material = target_mesh.get_active_material(0)
-			if not mat:
-				continue
-
-			if prop_info.type == "color" and material_bind.target_value.size() >= 4:
+			# Colours may come as RGB without alpha (Temptic's angry bind does); an
+			# opaque alpha is assumed then. Unverified how UniVRM reads such a bind.
+			if prop_info.type == "color" and material_bind.target_value.size() >= 3:
 				var resolved_prop: String = _material_prop_for(prop_info, mat)
 				if resolved_prop.is_empty():
 					continue
 
+				var target: PackedFloat32Array = material_bind.target_value
 				var mcb := RuntimeMaterialColorBind.new()
 				mcb.material = mat
 				mcb.prop = resolved_prop
-				mcb.color = Color(material_bind.target_value[0], material_bind.target_value[1], material_bind.target_value[2], material_bind.target_value[3])
+				mcb.color = Color(target[0], target[1], target[2], target[3] if target.size() >= 4 else 1.0)
 				expression.color_binds.append(mcb)
-
-				# Capture base state
-				var mat_path: NodePath = NodePath("../" + _get_path_from_root(target_mesh, root_node))
-				if not _base_material_colors.has(mat_path):
-					_base_material_colors[mat_path] = RuntimeMaterialColorState.new()
-				var base_state := _base_material_colors[mat_path]
-				if not base_state.properties.has(resolved_prop):
-					base_state.properties[resolved_prop] = _get_material_color(mat, resolved_prop)
+				_capture_base_color(mat, resolved_prop)
 
 			elif prop_info.type == "uv" and material_bind.target_value.size() >= 4:
 				var texture_transform_bind := RuntimeTextureTransformBind.new()
@@ -395,11 +379,7 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 				texture_transform_bind.scale = Vector2(material_bind.target_value[0], material_bind.target_value[1])
 				texture_transform_bind.offset = Vector2(material_bind.target_value[2], material_bind.target_value[3])
 				expression.uv_binds.append(texture_transform_bind)
-
-				# Capture base state
-				var mat_path: NodePath = NodePath("../" + _get_path_from_root(target_mesh, root_node))
-				if not _base_material_uvs.has(mat_path):
-					_base_material_uvs[mat_path] = _get_material_uv(mat)
+				_capture_base_uv(mat)
 
 		_binds[expression_key] = expression
 
@@ -470,15 +450,6 @@ func _set_material_uv(mat: Material, scale: Vector2, offset: Vector2) -> void:
 	elif mat is BaseMaterial3D:
 		mat.uv1_scale = Vector3(scale.x, scale.y, 1.0)
 		mat.uv1_offset = Vector3(offset.x, offset.y, 0.0)
-
-
-func _find_mesh_with_material(root: Node, mat_name: String) -> MeshInstance3D:
-	for mesh_inst: MeshInstance3D in root.find_children("", "MeshInstance3D", true, false):
-		for idx in range(mesh_inst.get_surface_override_material_count()):
-			var mat = mesh_inst.get_active_material(idx)
-			if mat and mat.resource_name == mat_name:
-				return mesh_inst
-	return null
 
 
 func _find_node_with_mesh(gltf_state: GLTFState, mesh_index: int) -> int:
