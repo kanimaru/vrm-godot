@@ -78,6 +78,7 @@ func test_vrm1_expression_call_spy():
 	var parent = body.get_parent()
 	var old_name = body.name
 	parent.remove_child(body)
+	autofree(body)
 	parent.add_child(spy)
 	spy.name = old_name
 	spy.owner = root # Ensure paths resolve correctly

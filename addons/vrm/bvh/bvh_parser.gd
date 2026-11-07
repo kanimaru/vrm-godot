@@ -6,9 +6,16 @@ class BvhNode:
 	var offset: Vector3 = Vector3.ZERO
 	var channels: Array[String] = []
 	var children: Array = [] # Array of BvhNode
-	var parent = null # BvhNode
+	## The joint above this one. Held weakly: the parent holds this node in its children,
+	## and a strong reference back would keep the whole hierarchy alive forever.
+	var parent: BvhNode:
+		get:
+			return _parent_ref.get_ref() if _parent_ref != null else null
+		set(value):
+			_parent_ref = weakref(value) if value != null else null
 	var is_end_site: bool = false
 	var channel_start_index: int = -1
+	var _parent_ref: WeakRef = null
 
 class BvhData:
 	var root: BvhNode = null
