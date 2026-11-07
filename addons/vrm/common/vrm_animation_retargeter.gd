@@ -9,6 +9,18 @@ class_name VrmAnimationRetargeter
 @export var animation_player: AnimationPlayer
 @export var skeleton: Skeleton3D
 
+## The AnimationPlayer this node created, until it is added to the parent. The parent is
+## still adding children in _ready, so the player goes in one deferred call later; if this
+## node is freed first (its avatar freed in the same frame), it frees the player itself.
+var _pending_player: AnimationPlayer
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(_pending_player):
+		if _pending_player.get_parent() == null:
+			_pending_player.free()
+		_pending_player = null
+
 
 func _ready() -> void:
 	print("[VRM Retargeter] Ready on node: ", name)
@@ -30,11 +42,21 @@ func _ready() -> void:
 		print("[VRM Retargeter] No AnimationPlayer found. Creating one...")
 		animation_player = AnimationPlayer.new()
 		animation_player.name = "AnimationPlayer"
-		get_parent().add_child.call_deferred(animation_player)
-		# We'll wait a frame to retarget if we had to create the player
-		_setup_signal.call_deferred()
+		_pending_player = animation_player
+		# The parent is busy adding children now; add the player and retarget a call later.
+		_attach_pending_player.call_deferred()
 	else:
 		_setup_signal()
+
+
+func _attach_pending_player() -> void:
+	if not is_instance_valid(_pending_player) or get_parent() == null:
+		return
+	var player: AnimationPlayer = _pending_player
+	_pending_player = null
+	if player.get_parent() == null:
+		get_parent().add_child(player)
+	_setup_signal()
 
 
 func _setup_signal() -> void:

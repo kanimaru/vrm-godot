@@ -83,3 +83,15 @@ func test_negative_target_hips_height_is_treated_as_no_override() -> void:
 	var track: int = _get_hips_pos_track(library)
 	var frame1_pos: Vector3 = library.get_animation("Take 001").track_get_key_value(track, 1)
 	assert_almost_eq(frame1_pos.y, 0.1, 0.0001, "negative target_hips_height keeps explicit scale_factor")
+
+
+func test_parsed_hierarchy_is_released_once_dropped() -> void:
+	# Each joint pointed back at its parent, which held it in children: a reference cycle
+	# that kept every parsed BvhNode alive until exit.
+	var data: BvhParser.BvhData = BvhParser.parse(MOCK_BVH)
+	var root_ref: WeakRef = weakref(data.root)
+	var end_site: BvhParser.BvhNode = data.root.children[0]
+	assert_same(end_site.parent, data.root, "a joint still reaches its parent")
+	end_site = null
+	data = null
+	assert_null(root_ref.get_ref(), "the parsed hierarchy should be freed once nothing holds it")
