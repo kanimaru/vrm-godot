@@ -1,0 +1,35 @@
+# publish:github - keeps github.com/kanimaru/vrm-godot as a cleaned copy of this repository
+# ---------------------------------------------------------------------------------------------
+# GitLab keeps the full history. Older commits here still hold third-party animations and songs
+# that can't be published, so a plain GitLab push mirror (which copies commits unchanged) can't
+# feed the public repo. Instead, every push to main and every tag reruns git filter-repo over the
+# whole history, dropping the paths listed in .github-publish-strip, and pushes the result.
+#
+# filter-repo is deterministic: the same commits always come out with the same IDs, so each run
+# only adds the new commits on top and the push is a plain fast-forward. The push is never
+# forced. If it gets rejected, the cleaned history changed, usually because
+# .github-publish-strip was edited; force-push main and the tags to GitHub once by hand.
+#
+# Needs the CI/CD variable GITHUB_PUBLISH_TOKEN (masked, protected): a fine-grained GitHub token
+# for kanimaru/vrm-godot with Contents and Workflows read/write. Workflows is needed because the
+# pushed commits contain .github/workflows/. Without the variable the job doesn't run.
+
+publish:github:
+  stage: deploy
+  image: python:3.12
+  variables:
+    GIT_STRATEGY: none
+    GITHUB_REPOSITORY_URL: https://github.com/kanimaru/vrm-godot.git
+  rules:
+    - if: $GITHUB_PUBLISH_TOKEN == null || $GITHUB_PUBLISH_TOKEN == ""
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  script:
+    - pip install --quiet --root-user-action=ignore git-filter-repo==2.47.0
+    - git clone --quiet --mirror "$CI_REPOSITORY_URL" repo.git
+    - cd repo.git
+    - git show "refs/heads/$CI_DEFAULT_BRANCH:.github-publish-strip" > ../strip.txt
+    - git filter-repo --force --quiet --invert-paths --paths-from-file ../strip.txt
+    - git remote add github "https://x-access-token:${GITHUB_PUBLISH_TOKEN}@${GITHUB_REPOSITORY_URL#https://}"
+    - git push github "refs/heads/$CI_DEFAULT_BRANCH:refs/heads/main" 'refs/tags/*:refs/tags/*'
