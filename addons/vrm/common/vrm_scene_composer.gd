@@ -207,14 +207,28 @@ static func apply_mtoon_materials(root: Node, mtoon_configs: Variant, state: GLT
 ## whatever material is ACTUALLY rendering at bind-compile time - critical for a bind to end up
 ## on the swapped-in MToon ShaderMaterial rather than a pre-swap material that's no longer part
 ## of the scene. Callers must run this after apply_mtoon_materials, not before.
+## Expression binds are compiled in _import_post, where meshes are still
+## ImporterMeshInstance3D (baked into MeshInstance3D only after the extension returns), so
+## both node types are searched; the ImporterMesh surface material is the very Material the
+## baked ArrayMesh surface ends up with.
 static func find_material_by_name(root: Node, material_name: String) -> Material:
 	if material_name.is_empty():
 		return null
-	for mesh_inst: MeshInstance3D in root.find_children("", "MeshInstance3D", true, false):
-		for idx: int in range(mesh_inst.get_surface_override_material_count()):
-			var mat: Material = mesh_inst.get_active_material(idx)
-			if mat != null and mat.resource_name == material_name:
-				return mat
+	for node: Node in root.find_children("*", "", true, false):
+		if node is MeshInstance3D:
+			var mesh_inst: MeshInstance3D = node as MeshInstance3D
+			for idx: int in range(mesh_inst.get_surface_override_material_count()):
+				var mat: Material = mesh_inst.get_active_material(idx)
+				if mat != null and mat.resource_name == material_name:
+					return mat
+		elif node is ImporterMeshInstance3D:
+			var importer_mesh: ImporterMesh = (node as ImporterMeshInstance3D).mesh
+			if importer_mesh == null:
+				continue
+			for idx: int in range(importer_mesh.get_surface_count()):
+				var mat: Material = importer_mesh.get_surface_material(idx)
+				if mat != null and mat.resource_name == material_name:
+					return mat
 	return null
 
 

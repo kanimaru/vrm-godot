@@ -16,7 +16,7 @@ const VrmLibraryRetargeter = preload("res://addons/vrm/common/vrm_library_retarg
 const VmdFormat = preload("res://addons/vrm/vmd/vmd_format.gd")
 const VmdLoader = preload("res://addons/vrm/vmd/vmd_loader.gd")
 const VmdDebugSkeleton = preload("res://addons/vrm/vmd/vmd_debug_skeleton.gd")
-const VrmConstants = preload("uid://xyiuw84wqa8w")  # res://addons/vrm/common/vrm_constants.gd
+const VrmConstants = preload("res://addons/vrm/common/vrm_constants.gd")
 
 var _recents: Array[String] = []
 var _current_model: Node = null

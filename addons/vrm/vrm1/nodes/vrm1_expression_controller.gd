@@ -100,6 +100,9 @@ var _is_dirty: bool = false
 var _base_morphs: Dictionary[NodePath, RuntimeNodeMorphState] = {}
 var _base_material_colors: Dictionary[Material, RuntimeMaterialColorState] = {}
 var _base_material_uvs: Dictionary[Material, RuntimeMaterialUVState] = {}
+## One line per material/texture-transform bind the last compile could not resolve; each is
+## also pushed as a warning. Not exported: it describes one compile, not the avatar.
+var _unresolved_bind_warnings: Array[String] = []
 
 var expressions: Array[String]:
 	get():
@@ -136,6 +139,7 @@ func compile_vrm1_binds(expressions_ref: Vrm1Expressions, gltf_state: GLTFState,
 	_base_morphs.clear()
 	_base_material_colors.clear()
 	_base_material_uvs.clear()
+	_unresolved_bind_warnings.clear()
 
 	if expressions_ref == null:
 		return
@@ -193,57 +197,75 @@ func _register_expression(expr_name: String, expr: Vrm1ExpressionData, gltf_stat
 				rb.weight = mb.weight
 				run_expr.morph_binds.append(rb)
 
-	# Material color binds
-	# gltf_state.materials holds the pre-MToon-swap glTF-imported materials, never updated
-	# by VrmSceneComposer.apply_mtoon_materials - so the bind's actual material must be
-	# re-resolved by name against the live scene tree, or it ends up mutating an orphaned
-	# material that isn't part of what's rendered.
+	# Material color binds (see _resolve_bind_material for why the material is looked up
+	# by name in the live scene tree)
 	for cb: Vrm1ExpressionMaterialColorBind in expr.material_color_binds:
-		var materials: Array = gltf_state.materials
-		if cb.material >= 0 and cb.material < materials.size():
-			var gltf_mat: Material = materials[cb.material]
-			var mat: Material = VrmSceneComposer.find_material_by_name(root_node, gltf_mat.resource_name) if gltf_mat != null else null
-			if mat != null:
-				var prop_info: Dictionary = _resolve_material_prop_name(cb.type)
-				var prop_name: String = _material_prop_for(prop_info, mat)
-				var t_val: PackedFloat32Array = cb.target_value
-				if not prop_name.is_empty() and t_val.size() == 4:
-					var target_color: Color = Color(t_val[0], t_val[1], t_val[2], t_val[3])
+		var mat: Material = _resolve_bind_material(expr_name, "materialColorBind", cb.material, gltf_state, root_node)
+		if mat != null:
+			var prop_info: Dictionary = _resolve_material_prop_name(cb.type)
+			var prop_name: String = _material_prop_for(prop_info, mat)
+			var t_val: PackedFloat32Array = cb.target_value
+			if not prop_name.is_empty() and t_val.size() == 4:
+				var target_color: Color = Color(t_val[0], t_val[1], t_val[2], t_val[3])
 
-					# Record base color
-					if not _base_material_colors.has(mat):
-						_base_material_colors[mat] = RuntimeMaterialColorState.new()
-					var base_color_state := _base_material_colors[mat] as RuntimeMaterialColorState
-					if not base_color_state.properties.has(prop_name):
-						base_color_state.properties[prop_name] = _get_material_color(mat, prop_name)
+				# Record base color
+				if not _base_material_colors.has(mat):
+					_base_material_colors[mat] = RuntimeMaterialColorState.new()
+				var base_color_state := _base_material_colors[mat] as RuntimeMaterialColorState
+				if not base_color_state.properties.has(prop_name):
+					base_color_state.properties[prop_name] = _get_material_color(mat, prop_name)
 
-					var rb = RuntimeMaterialColorBind.new()
-					rb.material = mat
-					rb.prop = prop_name
-					rb.color = target_color
-					run_expr.color_binds.append(rb)
+				var rb = RuntimeMaterialColorBind.new()
+				rb.material = mat
+				rb.prop = prop_name
+				rb.color = target_color
+				run_expr.color_binds.append(rb)
 
 	# Texture transform binds
 	for tb: Vrm1ExpressionTextureTransformBind in expr.texture_transform_binds:
-		var materials: Array = gltf_state.materials
-		if tb.material >= 0 and tb.material < materials.size():
-			var gltf_mat: Material = materials[tb.material]
-			var mat: Material = VrmSceneComposer.find_material_by_name(root_node, gltf_mat.resource_name) if gltf_mat != null else null
-			if mat != null:
-				# Record base UV
-				if not _base_material_uvs.has(mat):
-					var base_uv := RuntimeMaterialUVState.new()
-					base_uv.scale = _get_material_uv_scale(mat)
-					base_uv.offset = _get_material_uv_offset(mat)
-					_base_material_uvs[mat] = base_uv
+		var mat: Material = _resolve_bind_material(expr_name, "textureTransformBind", tb.material, gltf_state, root_node)
+		if mat != null:
+			# Record base UV
+			if not _base_material_uvs.has(mat):
+				var base_uv := RuntimeMaterialUVState.new()
+				base_uv.scale = _get_material_uv_scale(mat)
+				base_uv.offset = _get_material_uv_offset(mat)
+				_base_material_uvs[mat] = base_uv
 
-				var rb = RuntimeTextureTransformBind.new()
-				rb.material = mat
-				rb.scale = tb.scale
-				rb.offset = tb.offset
-				run_expr.uv_binds.append(rb)
+			var rb = RuntimeTextureTransformBind.new()
+			rb.material = mat
+			rb.scale = tb.scale
+			rb.offset = tb.offset
+			run_expr.uv_binds.append(rb)
 
 	_binds[expr_name] = run_expr
+
+
+## Resolves a bind's glTF material index to the Material that is actually rendering, or
+## null with a warning naming the expression and material. gltf_state.materials holds the
+## pre-MToon-swap glTF-imported materials, never updated by
+## VrmSceneComposer.apply_mtoon_materials - so the material is re-resolved by name against
+## the live scene tree, or the bind would mutate an orphaned material.
+func _resolve_bind_material(expr_name: String, bind_kind: String, material_index: int, gltf_state: GLTFState, root_node: Node) -> Material:
+	var materials: Array = gltf_state.materials
+	var reason: String = ""
+	var material_label: String = "#%d" % material_index
+	if material_index < 0 or material_index >= materials.size():
+		reason = "index out of range (%d glTF materials)" % materials.size()
+	else:
+		var gltf_mat: Material = materials[material_index]
+		if gltf_mat == null:
+			reason = "glTF material is null"
+		else:
+			material_label = "#%d '%s'" % [material_index, gltf_mat.resource_name]
+			var mat: Material = VrmSceneComposer.find_material_by_name(root_node, gltf_mat.resource_name)
+			if mat != null:
+				return mat
+			reason = "no mesh surface in the scene uses a material with that name"
+	var message: String = "[VRM1] Expression '%s': %s to material %s ignored: %s" % [expr_name, bind_kind, material_label, reason]
+	_unresolved_bind_warnings.append(message)
+	push_warning(message)
+	return null
 
 
 func _find_node_with_mesh(gltf_state: GLTFState, mesh_index: int) -> int:
