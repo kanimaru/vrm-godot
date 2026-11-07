@@ -1,5 +1,5 @@
 [project]
-godot = "4.3"
+godot = "4.7"
 
 [addons.mtoon-shader]
 git = "https://github.com/kanimaru/godot-mtoon-shader.git"
