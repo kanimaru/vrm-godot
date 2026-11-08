@@ -8,6 +8,10 @@ const VrmMtoonBuilder = preload("../common/vrm_mtoon_builder.gd")
 const VRMUtil = preload("../common/vrm_util.gd")
 const VrmSceneComposer = preload("../common/vrm_scene_composer.gd")
 
+## VRMC_materials_mtoon outlineWidthFactor (metres / screen-height fraction) to the
+## shader's _OutlineWidth, which it scales by 0.01 as VRM0 did.
+const VRM1_OUTLINE_TO_SHADER_WIDTH := 100.0
+
 
 func _get_supported_extensions() -> PackedStringArray:
 	return PackedStringArray([
@@ -609,7 +613,12 @@ func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> Dictionary:
 			p["outline_width_mode"] = VrmMtoonBuilder.OutlineWidthMode.SCREEN
 		_:
 			p["outline_width_mode"] = VrmMtoonBuilder.OutlineWidthMode.NONE
-	p["outline_width"] = ext.get("outlineWidthFactor", 0.0)
+	# VRM1 gives outlineWidthFactor in metres (worldCoordinates) or as a fraction of the
+	# screen height (screenCoordinates). The shader keeps VRM0's _OutlineWidth convention
+	# and multiplies by 0.01 (centimetres), so the factor goes in scaled up by 100 - the
+	# inverse of the VRM0 -> VRM1 migration (outlineWidthFactor = _OutlineWidth * 0.01).
+	# Passed through raw, every VRM1 outline was 100x too thin to see.
+	p["outline_width"] = float(ext.get("outlineWidthFactor", 0.0)) * VRM1_OUTLINE_TO_SHADER_WIDTH
 	if ext.has("outlineWidthMultiplyTexture"):
 		p["outline_width_texture"] = _resolve_gltf_texture(ext["outlineWidthMultiplyTexture"], state)
 	if ext.has("outlineColorFactor"):

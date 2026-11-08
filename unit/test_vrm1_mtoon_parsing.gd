@@ -377,6 +377,26 @@ func test_outline_width_default() -> void:
 	assert_eq(p["outline_width"], 0.0)
 
 
+## VRM1 world outlines are metres; the shader multiplies _OutlineWidth by 0.01, so a
+## 1.3 cm outline (Dove's body) must reach it as 1.3, not 0.013.
+func test_outline_width_world_metres_become_shader_centimetres() -> void:
+	var p: Dictionary = _parse(_make_mat({
+		"outlineWidthMode": "worldCoordinates",
+		"outlineWidthFactor": 0.013,
+	}))
+
+	assert_almost_eq(p["outline_width"], 1.3, 0.0001)
+
+
+func test_outline_width_screen_fraction_scaled_like_world() -> void:
+	var p: Dictionary = _parse(_make_mat({
+		"outlineWidthMode": "screenCoordinates",
+		"outlineWidthFactor": 0.005,
+	}))
+
+	assert_almost_eq(p["outline_width"], 0.5, 0.0001)
+
+
 # ---------------------------------------------------------------------------
 # UV animation
 # ---------------------------------------------------------------------------
