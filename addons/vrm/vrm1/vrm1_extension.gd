@@ -7,6 +7,7 @@ class_name Vrm1Extension
 const VrmMtoonBuilder = preload("../common/vrm_mtoon_builder.gd")
 const VRMUtil = preload("../common/vrm_util.gd")
 const VrmSceneComposer = preload("../common/vrm_scene_composer.gd")
+const VrmImageNames = preload("../common/vrm_image_names.gd")
 
 ## VRMC_materials_mtoon outlineWidthFactor (metres / screen-height fraction) to the
 ## shader's _OutlineWidth, which it scales by 0.01 as VRM0 did.
@@ -26,6 +27,7 @@ func _get_supported_extensions() -> PackedStringArray:
 
 func _import_preflight(state: GLTFState, extensions: PackedStringArray) -> Error:
 	if extensions.has("VRMC_vrm"):
+		VrmImageNames.rename_images(state.get_json())
 		return OK
 	return ERR_SKIP
 

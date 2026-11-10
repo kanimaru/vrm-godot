@@ -9,6 +9,7 @@ const m_bind_script = preload("structures/vrm0_material_bind.gd")
 const VrmMtoonBuilder = preload("../common/vrm_mtoon_builder.gd")
 const VRMUtil = preload("../common/vrm_util.gd")
 const VrmSceneComposer = preload("../common/vrm_scene_composer.gd")
+const VrmImageNames = preload("../common/vrm_image_names.gd")
 
 
 func _get_supported_extensions() -> PackedStringArray:
@@ -17,6 +18,7 @@ func _get_supported_extensions() -> PackedStringArray:
 
 func _import_preflight(state: GLTFState, extensions: PackedStringArray) -> Error:
 	if extensions.has("VRM"):
+		VrmImageNames.rename_images(state.get_json())
 		return OK
 	return ERR_SKIP
 
