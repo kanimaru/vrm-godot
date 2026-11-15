@@ -1,8 +1,8 @@
 [[addon]]
 name = "mtoon-shader"
 git = "https://github.com/kanimaru/godot-mtoon-shader.git"
-resolved = "dd4dd78fb4c682f9d22abe9d336da033466b76de"
-version = "0.0.0-20260827-dd4dd78"
+resolved = "45da76b997c0fd6f2aeed1949fa98001a6089242"
+version = "0.0.0-20261115-45da76b"
 path = "."
 folder = "Godot-MToon-Shader"
-content_hash = "sha256:e812710cbd31b40c4e70310e71f2cadacefbb85b650c949611498a7070b1579e"
+content_hash = "sha256:64bf5e88cfeb675703e3cecfcadab7815e83bd145e02cb751575d63543018edd"

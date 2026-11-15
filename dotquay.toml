@@ -3,6 +3,6 @@ godot = "4.7"
 
 [addons.mtoon-shader]
 git = "https://github.com/kanimaru/godot-mtoon-shader.git"
-rev = "dd4dd78fb4c682f9d22abe9d336da033466b76de"
+rev = "45da76b997c0fd6f2aeed1949fa98001a6089242"
 path = "."
 install_as = "Godot-MToon-Shader"
