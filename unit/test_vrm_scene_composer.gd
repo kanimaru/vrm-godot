@@ -23,6 +23,41 @@ func _make_mesh_with_material(mat: Material) -> MeshInstance3D:
 
 
 # ---------------------------------------------------------------------------
+# attach_retargeter
+# ---------------------------------------------------------------------------
+
+# A VRM whose meshes are all unskinned (the official VRMC_materials_mtoon_UV_Animation_Test
+# sample) imports with its humanoid bones as plain Node3Ds and no Skeleton3D. A retargeter
+# attached there pushed "Could not find Skeleton3D!" on every load of a valid file.
+func test_attach_retargeter_skips_a_model_without_skeleton() -> void:
+	var root := Node3D.new()
+	var hips := Node3D.new()
+	hips.name = "hips"
+	root.add_child(hips)
+	VrmSceneComposer.attach_retargeter(root)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+
+	assert_null(root.get_node_or_null("VrmAnimationRetargeter"),
+			"no retargeter when there is no Skeleton3D to retarget onto")
+	assert_push_error_count(0, "a valid unskinned VRM must load without errors")
+
+
+func test_attach_retargeter_attaches_to_a_model_with_skeleton() -> void:
+	var root := Node3D.new()
+	var skeleton := Skeleton3D.new()
+	skeleton.name = "GeneralSkeleton"
+	root.add_child(skeleton)
+	VrmSceneComposer.attach_retargeter(root)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+
+	var retargeter: Node = root.get_node_or_null("VrmAnimationRetargeter")
+	assert_not_null(retargeter, "a skinned model still gets its retargeter")
+	assert_same(retargeter.get("skeleton"), skeleton)
+
+
+# ---------------------------------------------------------------------------
 # find_material_by_name
 # ---------------------------------------------------------------------------
 

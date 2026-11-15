@@ -125,8 +125,13 @@ static func resolve_scene_node(state: GLTFState, root: Node, node_index: int) ->
 
 
 ## Creates and attaches a VrmAnimationRetargeter, wiring it to the root's AnimationPlayer
-## if one already exists.
+## if one already exists. Skipped when the model has no Skeleton3D: Godot only builds one
+## from glTF skins, and a VRM whose meshes are all unskinned (legal; the official
+## VRMC_materials_mtoon_UV_Animation_Test sample is one) has nothing to retarget onto, so
+## a retargeter there would only push "Could not find Skeleton3D!" on every load.
 static func attach_retargeter(root: Node) -> void:
+	if VRMUtil.find_skeleton(root) == null:
+		return
 	var retargeter_script: Script = load("res://addons/vrm/common/vrm_animation_retargeter.gd")
 	if retargeter_script == null:
 		return
