@@ -409,13 +409,29 @@ func test_uv_animation_defaults() -> void:
 	assert_eq(p["uv_anim_rotation"], 0.0)
 
 
-func test_uv_animation_explicit() -> void:
-	var p: Dictionary = _parse(_make_mat({
-		"uvAnimationScrollXSpeedFactor": 0.3,
-		"uvAnimationScrollYSpeedFactor": -0.1,
-		"uvAnimationRotationSpeedFactor": 2.0,
-	}))
+func test_uv_animation_scroll_x_passes_through() -> void:
+	var p: Dictionary = _parse(_make_mat({ "uvAnimationScrollXSpeedFactor": 0.3 }))
 
 	assert_eq(p["uv_anim_scroll_x"], 0.3)
-	assert_eq(p["uv_anim_scroll_y"], -0.1)
-	assert_eq(p["uv_anim_rotation"], 2.0)
+
+
+## VRM1 scroll Y is in glTF's top-left UV space; the shader takes MToon 0.x's
+## bottom-left value (as VRM0 hands it over) and negates it, so VRM1 goes in negated.
+func test_uv_animation_scroll_y_flipped_to_bottom_left_origin() -> void:
+	var p: Dictionary = _parse(_make_mat({ "uvAnimationScrollYSpeedFactor": -0.1 }))
+
+	assert_almost_eq(p["uv_anim_scroll_y"], 0.1, 0.0001)
+
+
+## VRM1 rotation is radians per second; the shader multiplies _UvAnimRotation by 2*PI
+## (MToon 0.x turns per second), so 2*PI rad/s must reach it as one turn per second.
+func test_uv_animation_rotation_radians_become_turns() -> void:
+	var p: Dictionary = _parse(_make_mat({ "uvAnimationRotationSpeedFactor": TAU }))
+
+	assert_almost_eq(p["uv_anim_rotation"], 1.0, 0.0001)
+
+
+func test_uv_animation_rotation_keeps_sign() -> void:
+	var p: Dictionary = _parse(_make_mat({ "uvAnimationRotationSpeedFactor": -PI }))
+
+	assert_almost_eq(p["uv_anim_rotation"], -0.5, 0.0001)

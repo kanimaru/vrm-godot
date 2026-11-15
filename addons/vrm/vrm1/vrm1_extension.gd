@@ -630,8 +630,13 @@ func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> Dictionary:
 
 	# UV Animation
 	p["uv_anim_scroll_x"] = ext.get("uvAnimationScrollXSpeedFactor", 0.0)
-	p["uv_anim_scroll_y"] = ext.get("uvAnimationScrollYSpeedFactor", 0.0)
-	p["uv_anim_rotation"] = ext.get("uvAnimationRotationSpeedFactor", 0.0)
+	# The shader keeps MToon 0.x's conventions, as VRM0 feeds it raw: scroll Y in
+	# Unity's bottom-left UV space (it negates Y itself for Godot's top-left UV) and
+	# rotation in turns per second. VRM1 gives scroll Y in glTF's top-left space and
+	# rotation in radians per second, so convert back - the inverse of UniVRM's
+	# VRM0 -> VRM1 migration (scrollY * -1, rotation * 2*PI).
+	p["uv_anim_scroll_y"] = -float(ext.get("uvAnimationScrollYSpeedFactor", 0.0))
+	p["uv_anim_rotation"] = float(ext.get("uvAnimationRotationSpeedFactor", 0.0)) / TAU
 	if ext.has("uvAnimationMaskTexture"):
 		p["uv_anim_mask_texture"] = _resolve_gltf_texture(ext["uvAnimationMaskTexture"], state)
 
