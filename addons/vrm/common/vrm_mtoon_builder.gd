@@ -33,6 +33,13 @@ const _SH_OUTLINE_TRANS_ZWRITE := preload("res://addons/Godot-MToon-Shader/mtoon
 enum AlphaMode { OPAQUE = 0, MASK = 1, BLEND = 2, BLEND_ZWRITE = 3 }
 enum OutlineWidthMode { NONE = 0, WORLD = 1, SCREEN = 2 }
 
+## One-hot channel selectors for the shader's _OutlineWidthChannel / _UvAnimMaskChannel.
+## MToon 0.x reads R from both textures; VRMC_materials_mtoon 1.0 reads G from
+## outlineWidthMultiplyTexture and B from uvAnimationMaskTexture.
+const CHANNEL_R := Vector4(1.0, 0.0, 0.0, 0.0)
+const CHANNEL_G := Vector4(0.0, 1.0, 0.0, 0.0)
+const CHANNEL_B := Vector4(0.0, 0.0, 1.0, 0.0)
+
 
 # ---------------------------------------------------------------------------
 # Public helpers
@@ -171,6 +178,7 @@ static func _apply_all(mat: ShaderMaterial, p: Dictionary) -> void:
 	mat.set_shader_parameter("_OutlineColorMode", float(p.get("outline_color_mode", 0)))
 	if p.has("outline_width_texture") and p["outline_width_texture"] != null:
 		mat.set_shader_parameter("_OutlineWidthTexture", p["outline_width_texture"])
+	mat.set_shader_parameter("_OutlineWidthChannel", p.get("outline_width_channel", CHANNEL_R))
 
 	# --- UV Animation ---
 	mat.set_shader_parameter("_UvAnimScrollX", float(p.get("uv_anim_scroll_x", 0.0)))
@@ -178,3 +186,4 @@ static func _apply_all(mat: ShaderMaterial, p: Dictionary) -> void:
 	mat.set_shader_parameter("_UvAnimRotation", float(p.get("uv_anim_rotation", 0.0)))
 	if p.has("uv_anim_mask_texture") and p["uv_anim_mask_texture"] != null:
 		mat.set_shader_parameter("_UvAnimMaskTexture", p["uv_anim_mask_texture"])
+	mat.set_shader_parameter("_UvAnimMaskChannel", p.get("uv_anim_mask_channel", CHANNEL_R))

@@ -623,6 +623,8 @@ func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> Dictionary:
 	p["outline_width"] = float(ext.get("outlineWidthFactor", 0.0)) * VRM1_OUTLINE_TO_SHADER_WIDTH
 	if ext.has("outlineWidthMultiplyTexture"):
 		p["outline_width_texture"] = _resolve_gltf_texture(ext["outlineWidthMultiplyTexture"], state)
+	# VRM1 reads the G channel of outlineWidthMultiplyTexture (VRM0 read R).
+	p["outline_width_channel"] = VrmMtoonBuilder.CHANNEL_G
 	if ext.has("outlineColorFactor"):
 		var o: Array = ext["outlineColorFactor"]
 		p["outline_color"] = Color(o[0], o[1], o[2])
@@ -634,6 +636,8 @@ func _parse_vrm1_mtoon(mat_json: Dictionary, state: GLTFState) -> Dictionary:
 	p["uv_anim_rotation"] = ext.get("uvAnimationRotationSpeedFactor", 0.0)
 	if ext.has("uvAnimationMaskTexture"):
 		p["uv_anim_mask_texture"] = _resolve_gltf_texture(ext["uvAnimationMaskTexture"], state)
+	# VRM1 reads the B channel of uvAnimationMaskTexture (VRM0 read R).
+	p["uv_anim_mask_channel"] = VrmMtoonBuilder.CHANNEL_B
 
 	return p
 

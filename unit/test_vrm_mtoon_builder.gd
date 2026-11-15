@@ -284,3 +284,28 @@ func test_shading_grade_rate_untouched_when_no_shading_shift_texture() -> void:
 	})
 
 	assert_null(mat.get_shader_parameter("_ShadingGradeRate"))
+
+
+# ---------------------------------------------------------------------------
+# Outline width / UV anim mask texture channels
+# ---------------------------------------------------------------------------
+
+func test_texture_channels_default_to_red() -> void:
+	var mat: ShaderMaterial = VrmMtoonBuilder.build_body({})
+
+	assert_eq(mat.get_shader_parameter("_OutlineWidthChannel"), VrmMtoonBuilder.CHANNEL_R)
+	assert_eq(mat.get_shader_parameter("_UvAnimMaskChannel"), VrmMtoonBuilder.CHANNEL_R)
+
+
+func test_texture_channels_applied_to_body_and_outline() -> void:
+	var p: Dictionary = {
+		"outline_width_mode": VrmMtoonBuilder.OutlineWidthMode.WORLD,
+		"outline_width_channel": VrmMtoonBuilder.CHANNEL_G,
+		"uv_anim_mask_channel": VrmMtoonBuilder.CHANNEL_B,
+	}
+	var body: ShaderMaterial = VrmMtoonBuilder.build_body(p)
+	var outline: ShaderMaterial = VrmMtoonBuilder.build_outline(p)
+
+	for mat: ShaderMaterial in [body, outline]:
+		assert_eq(mat.get_shader_parameter("_OutlineWidthChannel"), VrmMtoonBuilder.CHANNEL_G)
+		assert_eq(mat.get_shader_parameter("_UvAnimMaskChannel"), VrmMtoonBuilder.CHANNEL_B)

@@ -419,3 +419,21 @@ func test_uv_animation_explicit() -> void:
 	assert_eq(p["uv_anim_scroll_x"], 0.3)
 	assert_eq(p["uv_anim_scroll_y"], -0.1)
 	assert_eq(p["uv_anim_rotation"], 2.0)
+
+
+# ---------------------------------------------------------------------------
+# Texture channels (VRMC_materials_mtoon 1.0: outline width G, UV anim mask B)
+# ---------------------------------------------------------------------------
+
+func test_outline_width_channel_is_green() -> void:
+	var p: Dictionary = _parse(_make_mat())
+
+	assert_eq(p["outline_width_channel"], VrmMtoonBuilder.CHANNEL_G,
+			"VRM1 outlineWidthMultiplyTexture is read from the G channel")
+
+
+func test_uv_anim_mask_channel_is_blue() -> void:
+	var p: Dictionary = _parse(_make_mat())
+
+	assert_eq(p["uv_anim_mask_channel"], VrmMtoonBuilder.CHANNEL_B,
+			"VRM1 uvAnimationMaskTexture is read from the B channel")

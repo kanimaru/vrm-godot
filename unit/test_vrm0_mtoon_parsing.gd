@@ -267,3 +267,14 @@ func test_empty_float_vector_texture_dicts_no_crash() -> void:
 	# Should at least produce the alpha mode and other mandatory keys.
 	assert_true(p.has("alpha_mode"))
 	assert_true(p.has("double_sided"))
+
+
+# ---------------------------------------------------------------------------
+# Texture channels (MToon 0.x reads R, the builder's default)
+# ---------------------------------------------------------------------------
+
+func test_texture_channels_left_to_builder_default() -> void:
+	var p: Dictionary = _parse({})
+
+	assert_false(p.has("outline_width_channel"), "VRM0 keeps the builder's R default")
+	assert_false(p.has("uv_anim_mask_channel"), "VRM0 keeps the builder's R default")
