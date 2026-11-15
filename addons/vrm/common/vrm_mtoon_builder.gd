@@ -65,6 +65,13 @@ static func build_outline(p: Dictionary) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = _pick_outline_shader(p.get("alpha_mode", AlphaMode.OPAQUE))
 	_apply_all(mat, p)
+	# The outline draws right after its own body, as MToon's outline pass does in Unity.
+	# Opaque passes are depth-sorted, so order only matters for transparent ones; with the
+	# body's priority, Godot drew a transparent outline in either order. Drawn first, the
+	# hull ring around a bump (Dove's brows) writes depth, the body behind it is rejected,
+	# and the ring then loses its own depth test: a see-through hole onto whatever is
+	# behind the head.
+	mat.render_priority = _render_priority(p) + 1
 	return mat
 
 
@@ -94,6 +101,15 @@ static func _pick_outline_shader(alpha_mode: int) -> Shader:
 			return _SH_OUTLINE
 
 
+## The body's render_priority: twice renderQueueOffsetNumber, so build_outline() can slot
+## each outline (body + 1) between its body and the next offset without reordering
+## materials of different offsets. The spec authors [-9, +9]; Godot allows [-128, 127].
+static func _render_priority(p: Dictionary) -> int:
+	return clampi(int(p.get("render_queue_offset", 0)) * 2,
+			RenderingServer.MATERIAL_RENDER_PRIORITY_MIN,
+			RenderingServer.MATERIAL_RENDER_PRIORITY_MAX - 1)
+
+
 ## Writes all parameters from the bag to a ShaderMaterial using the
 ## reference addon's uniform naming convention (_Color, _ShadeColor, …).
 static func _apply_all(mat: ShaderMaterial, p: Dictionary) -> void:
@@ -106,8 +122,7 @@ static func _apply_all(mat: ShaderMaterial, p: Dictionary) -> void:
 
 	# render_priority (not a shader uniform - a base Material property): offsets draw
 	# order for transparent materials, only meaningful when alpha_mode is BLEND per spec.
-	# Godot clamps to [-128, 127], well within the spec's authored [-9, +9] range.
-	mat.render_priority = int(p.get("render_queue_offset", 0))
+	mat.render_priority = _render_priority(p)
 
 	# --- Base color / Lit ---
 	var base_color: Color = p.get("base_color", Color.WHITE)

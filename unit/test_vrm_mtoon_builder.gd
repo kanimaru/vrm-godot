@@ -233,7 +233,7 @@ func test_build_body_render_priority_positive_offset() -> void:
 		"render_queue_offset": 9,
 	})
 
-	assert_eq(mat.render_priority, 9)
+	assert_eq(mat.render_priority, 18, "offsets are doubled to leave room for outlines")
 
 
 func test_build_body_render_priority_negative_offset() -> void:
@@ -241,16 +241,47 @@ func test_build_body_render_priority_negative_offset() -> void:
 		"render_queue_offset": -9,
 	})
 
-	assert_eq(mat.render_priority, -9)
+	assert_eq(mat.render_priority, -18)
 
 
-func test_build_outline_also_receives_render_priority() -> void:
-	var mat: ShaderMaterial = VrmMtoonBuilder.build_outline({
+## Godot drew a transparent outline with its body's priority in either order; drawn
+## first, its hull ring around a bump punched a see-through hole into the body.
+func test_build_outline_draws_right_after_its_body() -> void:
+	for mode in [VrmMtoonBuilder.AlphaMode.OPAQUE, VrmMtoonBuilder.AlphaMode.BLEND,
+			VrmMtoonBuilder.AlphaMode.BLEND_ZWRITE]:
+		var p := {
+			"alpha_mode": mode,
+			"outline_width_mode": VrmMtoonBuilder.OutlineWidthMode.WORLD,
+			"render_queue_offset": 3,
+		}
+		var body: ShaderMaterial = VrmMtoonBuilder.build_body(p)
+		var outline: ShaderMaterial = VrmMtoonBuilder.build_outline(p)
+
+		assert_eq(outline.render_priority, body.render_priority + 1,
+				"outline follows its body (alpha mode %d)" % mode)
+
+
+func test_outline_stays_before_the_next_queue_offset() -> void:
+	var outline: ShaderMaterial = VrmMtoonBuilder.build_outline({
+		"alpha_mode": VrmMtoonBuilder.AlphaMode.BLEND_ZWRITE,
 		"outline_width_mode": VrmMtoonBuilder.OutlineWidthMode.WORLD,
-		"render_queue_offset": 3,
+		"render_queue_offset": 0,
 	})
+	var next_body: ShaderMaterial = VrmMtoonBuilder.build_body({ "render_queue_offset": 1 })
 
-	assert_eq(mat.render_priority, 3)
+	assert_lt(outline.render_priority, next_body.render_priority)
+
+
+func test_render_priority_stays_inside_godot_range() -> void:
+	var p := {
+		"outline_width_mode": VrmMtoonBuilder.OutlineWidthMode.WORLD,
+		"render_queue_offset": 500,
+	}
+
+	assert_eq(VrmMtoonBuilder.build_outline(p).render_priority,
+			RenderingServer.MATERIAL_RENDER_PRIORITY_MAX)
+	assert_eq(VrmMtoonBuilder.build_body({ "render_queue_offset": -500 }).render_priority,
+			RenderingServer.MATERIAL_RENDER_PRIORITY_MIN)
 
 
 # ---------------------------------------------------------------------------
