@@ -269,3 +269,61 @@ func test_controller_keeps_its_setup_through_a_saved_scene() -> void:
 	var left: Vector3 = _gaze(skeleton, rig.left_eye_idx)
 	assert_almost_eq(rad_to_deg(atan2(left.x, left.z)), 30.0, 0.01,
 			"a loaded scene's controller must still turn the eyes")
+
+
+# ---------------------------------------------------------------------------
+# Range map curves (VRM 0.x degree maps)
+# ---------------------------------------------------------------------------
+
+func test_range_map_without_a_curve_is_linear() -> void:
+	var rm := _make_range_map(90.0, 10.0)
+	assert_almost_eq(rm.map(45.0), 5.0, 0.0001)
+	assert_almost_eq(rm.map(-180.0), -10.0, 0.0001, "past input_max_value the output holds")
+
+
+func test_vrm0_default_curve_is_linear() -> void:
+	var rm := _make_range_map(90.0, 10.0)
+	rm.curve = PackedFloat32Array([0, 0, 0, 1, 1, 1, 1, 0])
+	for x: float in [0.0, 0.25, 0.5, 0.9, 1.0]:
+		assert_almost_eq(rm.evaluate_curve(x), x, 0.0001)
+
+
+func test_range_map_curve_is_a_hermite_between_keys() -> void:
+	var rm := _make_range_map(90.0, 10.0)
+	# Flat tangents at both ends: smoothstep, 0.5 -> 0.5 but 0.25 -> 0.15625.
+	rm.curve = PackedFloat32Array([0, 0, 0, 0, 1, 1, 0, 0])
+	assert_almost_eq(rm.evaluate_curve(0.25), 0.15625, 0.0001)
+	assert_almost_eq(rm.evaluate_curve(0.5), 0.5, 0.0001)
+	assert_almost_eq(rm.map(22.5), 1.5625, 0.0001)
+
+
+# ---------------------------------------------------------------------------
+# VRM 0.x: the skeleton faces -Z
+# ---------------------------------------------------------------------------
+
+func test_negative_z_facing_still_looks_to_the_avatars_left_and_up() -> void:
+	var rig: Dictionary = _make_tilted_rig()
+	var controller := _attach(rig.skeleton, rig.model, _make_look_at("bone"))
+	controller.faces_negative_z = true
+
+	controller.target_yaw = 90.0
+	controller._process(0.0)
+	# The avatar faces -Z, so its left is -X; its rest gaze is -Z.
+	var forward := Vector3.FORWARD
+	var left: Vector3 = _turn(rig.skeleton, rig.left_eye_idx) * forward
+	assert_almost_eq(rad_to_deg(atan2(-left.x, -left.z)), 30.0, 0.01,
+			"yaw > 0 turns the gaze toward -X, the left of an avatar facing -Z")
+	assert_almost_eq(left.y, 0.0, 0.0001)
+
+	controller.target_yaw = 0.0
+	controller.target_pitch = 90.0
+	controller._process(0.0)
+	var up: Vector3 = _turn(rig.skeleton, rig.right_eye_idx) * forward
+	assert_almost_eq(rad_to_deg(asin(up.y)), 40.0, 0.01, "pitch > 0 still lifts the gaze")
+
+
+## The eye's turn away from its rest, in skeleton space.
+func _turn(skeleton: Skeleton3D, idx: int) -> Quaternion:
+	var now: Quaternion = skeleton.get_bone_global_pose(idx).basis.get_rotation_quaternion()
+	var rest: Quaternion = skeleton.get_bone_global_rest(idx).basis.get_rotation_quaternion()
+	return now * rest.inverse()

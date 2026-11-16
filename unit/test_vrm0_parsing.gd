@@ -228,6 +228,26 @@ func test_parse_first_person_annotation_defaults() -> void:
 	assert_eq(ann.first_person_flag, "Auto")
 
 
+func test_parse_first_person_look_at_degree_maps() -> void:
+	var d: Dictionary = {
+		"firstPersonBoneOffset": { "x": 0.0, "y": 0.06, "z": 0.01 },
+		"lookAtHorizontalInner": { "curve": [0, 0, 0, 1, 1, 1, 1, 0], "xRange": 90, "yRange": 8 },
+		"lookAtHorizontalOuter": { "xRange": 45, "yRange": 12 },
+		"lookAtVerticalUp": { "xRange": 60, "yRange": 10 },
+	}
+
+	var fp: Vrm0FirstPerson = _ext.call("_parse_first_person", d)
+
+	assert_almost_eq(fp.first_person_bone_offset, Vector3(0.0, 0.06, 0.01), Vector3.ONE * 0.0001)
+	assert_eq(fp.look_at_horizontal_inner.y_range, 8.0)
+	assert_eq(fp.look_at_horizontal_inner.curve.size(), 8)
+	assert_eq(fp.look_at_horizontal_outer.x_range, 45.0)
+	assert_eq(fp.look_at_horizontal_outer.y_range, 12.0)
+	assert_eq(fp.look_at_vertical_up.x_range, 60.0)
+	assert_eq(fp.look_at_vertical_down.x_range, 90.0, "a missing map keeps the VRM 0.x defaults")
+	assert_eq(fp.look_at_vertical_down.y_range, 10.0)
+
+
 # ---------------------------------------------------------------------------
 # _parse_blend_shape
 # ---------------------------------------------------------------------------

@@ -19,6 +19,9 @@ const VRMUtil = preload("../../common/vrm_util.gd")
 @export var look_at_data: Vrm1LookAt
 @export var skeleton: Skeleton3D
 @export var expression_controller: Vrm1ExpressionController
+## True for VRM 0.x avatars: their skeleton faces -Z (the importer turns the root, not the
+## bones), where VRM 1.0 faces +Z. Yaw and pitch keep meaning the avatar's left and up.
+@export var faces_negative_z: bool = false
 
 @export_storage var _head_bone_idx: int = -1
 @export_storage var _left_eye_bone_idx: int = -1
@@ -57,6 +60,8 @@ func _process(_delta: float) -> void:
 			var head_global_pose: Transform3D = skeleton.global_transform * skeleton.get_bone_global_pose(_head_bone_idx)
 			var local_target: Vector3 = head_global_pose.affine_inverse() * t_node.global_position
 			local_target -= look_at_data.offset_from_head_bone
+			if faces_negative_z:
+				local_target = Vector3(-local_target.x, local_target.y, -local_target.z)
 
 			yaw = rad_to_deg(atan2(local_target.x, local_target.z))
 			var xz_len: float = Vector2(local_target.x, local_target.z).length()
@@ -94,10 +99,7 @@ func _process(_delta: float) -> void:
 func _map_range(value: float, range_map: Vrm1LookAtRangeMap) -> float:
 	if not range_map:
 		return 0.0
-	var sign_val: float = sign(value)
-	var abs_val: float = abs(value)
-	var factor: float = clampf(abs_val / max(range_map.input_max_value, 0.001), 0.0, 1.0)
-	return factor * range_map.output_scale * sign_val
+	return range_map.map(value)
 
 
 func _apply_bone(left_yaw_mapped: float, right_yaw_mapped: float, pitch_mapped: float) -> void:
@@ -116,7 +118,10 @@ func _apply_bone(left_yaw_mapped: float, right_yaw_mapped: float, pitch_mapped: 
 func _apply_eye(bone_idx: int, yaw_deg: float, pitch_deg: float) -> void:
 	if bone_idx < 0:
 		return
-	var turn := Quaternion.from_euler(Vector3(-deg_to_rad(pitch_deg), deg_to_rad(yaw_deg), 0.0))
+	# Facing -Z flips which way a turn about X lifts the gaze; a turn about Y is the same.
+	var pitch_sign: float = 1.0 if faces_negative_z else -1.0
+	var turn := Quaternion.from_euler(
+			Vector3(pitch_sign * deg_to_rad(pitch_deg), deg_to_rad(yaw_deg), 0.0))
 	var rest_local: Quaternion = skeleton.get_bone_rest(bone_idx).basis.get_rotation_quaternion()
 	var rest_global: Quaternion = (
 			skeleton.get_bone_global_rest(bone_idx).basis.get_rotation_quaternion())

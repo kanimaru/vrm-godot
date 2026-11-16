@@ -123,7 +123,25 @@ func _parse_first_person(d: Dictionary) -> Vrm0FirstPerson:
 			m.mesh = md.get("mesh", -1)
 			m.first_person_flag = md.get("firstPersonFlag", "Auto")
 			fp.mesh_annotations.append(m)
+	var offset: Dictionary = d.get("firstPersonBoneOffset", {})
+	fp.first_person_bone_offset = Vector3(
+			offset.get("x", 0.0), offset.get("y", 0.0), offset.get("z", 0.0))
+	fp.look_at_horizontal_inner = _parse_degree_map(d.get("lookAtHorizontalInner", {}))
+	fp.look_at_horizontal_outer = _parse_degree_map(d.get("lookAtHorizontalOuter", {}))
+	fp.look_at_vertical_down = _parse_degree_map(d.get("lookAtVerticalDown", {}))
+	fp.look_at_vertical_up = _parse_degree_map(d.get("lookAtVerticalUp", {}))
 	return fp
+
+
+## A firstPerson degree map; a missing field keeps the VRM 0.x default (90 deg in, 10 deg out,
+## the linear curve).
+func _parse_degree_map(d: Dictionary) -> Vrm0FirstPerson.DegreeMap:
+	var map := Vrm0FirstPerson.DegreeMap.new()
+	if d.has("curve"):
+		map.curve = PackedFloat32Array(d["curve"])
+	map.x_range = d.get("xRange", map.x_range)
+	map.y_range = d.get("yRange", map.y_range)
+	return map
 
 
 func _parse_blend_shape(d: Dictionary) -> Vrm0BlendShape:
@@ -254,7 +272,44 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 		expr_controller.owner = root
 		expr_controller.compile_vrm0_binds(vrm_top_level.blend_shape_master, state, root)
 
+	var first_person: Vrm0FirstPerson = vrm_top_level.first_person
+	if skeleton != null and first_person != null and first_person.look_at_type_name == "Bone":
+		_attach_bone_look_at(root, skeleton, first_person)
+
 	return OK
+
+
+## Bone-type VRM 0.x look-at runs on the VRM 1.0 controller: the degree maps carry over as
+## range maps (curve included) and faces_negative_z accounts for the -Z facing. Same node
+## name as on VRM 1.0 avatars, so whatever drives target_yaw/target_pitch (a VRMA's look-at
+## tracks, a tracking app) finds it on either version. BlendShape-type look-at needs nothing
+## here: its lookup/lookdown/... presets are ordinary expressions.
+func _attach_bone_look_at(root: Node, skeleton: Skeleton3D, fp: Vrm0FirstPerson) -> void:
+	var look_at := Vrm1LookAt.new()
+	look_at.type = "bone"
+	look_at.offset_from_head_bone = fp.first_person_bone_offset
+	look_at.range_map_horizontal_inner = _range_map(fp.look_at_horizontal_inner)
+	look_at.range_map_horizontal_outer = _range_map(fp.look_at_horizontal_outer)
+	look_at.range_map_vertical_down = _range_map(fp.look_at_vertical_down)
+	look_at.range_map_vertical_up = _range_map(fp.look_at_vertical_up)
+
+	var controller := Vrm1LookAtController.new()
+	controller.name = &"Vrm1LookAtController"
+	controller.unique_name_in_owner = true
+	controller.faces_negative_z = true
+	root.add_child(controller, true)
+	controller.owner = root
+	controller.setup(look_at, skeleton, root, null)
+
+
+func _range_map(degree_map: Vrm0FirstPerson.DegreeMap) -> Vrm1LookAtRangeMap:
+	var map := Vrm1LookAtRangeMap.new()
+	if degree_map == null:
+		return map
+	map.input_max_value = degree_map.x_range
+	map.output_scale = degree_map.y_range
+	map.curve = degree_map.curve
+	return map
 
 
 # ---------------------------------------------------------------------------
