@@ -157,8 +157,8 @@ func _parse_look_at(d: Dictionary) -> Vrm1LookAt:
 	return look_at
 
 
-func _parse_look_at_range_map(d: Dictionary) -> Vrm1LookAt.RangeMap:
-	var rm: Vrm1LookAt.RangeMap = Vrm1LookAt.RangeMap.new()
+func _parse_look_at_range_map(d: Dictionary) -> Vrm1LookAtRangeMap:
+	var rm: Vrm1LookAtRangeMap = Vrm1LookAt.RangeMap.new()
 	rm.input_max_value = d.get("inputMaxValue", 90.0)
 	rm.output_scale = d.get("outputScale", 10.0)
 	return rm

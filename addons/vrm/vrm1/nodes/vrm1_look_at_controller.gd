@@ -14,13 +14,15 @@ const VRMUtil = preload("../../common/vrm_util.gd")
 		target_pitch = value
 		_request_update()
 
-var look_at_data: Vrm1LookAt
-var skeleton: Skeleton3D
-var expression_controller: Vrm1ExpressionController
+# Saved with the imported scene: setup() runs only while importing, so anything it fills in
+# that is not stored here is gone once the .vrm is loaded back as a scene.
+@export var look_at_data: Vrm1LookAt
+@export var skeleton: Skeleton3D
+@export var expression_controller: Vrm1ExpressionController
 
-var _head_bone_idx: int = -1
-var _left_eye_bone_idx: int = -1
-var _right_eye_bone_idx: int = -1
+@export_storage var _head_bone_idx: int = -1
+@export_storage var _left_eye_bone_idx: int = -1
+@export_storage var _right_eye_bone_idx: int = -1
 var _is_dirty: bool = false
 
 
@@ -77,8 +79,8 @@ func _process(_delta: float) -> void:
 		# Per spec, the two eyes use OPPOSITE horizontal range maps for the same yaw sign,
 		# producing natural convergence: the eye on the side being looked toward swings
 		# outward (Outer), the other eye swings inward toward the nose (Inner).
-		var outer_map: Vrm1LookAt.RangeMap = look_at_data.range_map_horizontal_outer
-		var inner_map: Vrm1LookAt.RangeMap = look_at_data.range_map_horizontal_inner
+		var outer_map: Vrm1LookAtRangeMap = look_at_data.range_map_horizontal_outer
+		var inner_map: Vrm1LookAtRangeMap = look_at_data.range_map_horizontal_inner
 		var left_yaw_mapped: float = _map_range(yaw, outer_map if yaw > 0.0 else inner_map)
 		var right_yaw_mapped: float = _map_range(yaw, inner_map if yaw > 0.0 else outer_map)
 		_apply_bone(left_yaw_mapped, right_yaw_mapped, pitch_mapped)
@@ -89,7 +91,7 @@ func _process(_delta: float) -> void:
 		_apply_expression(yaw_mapped, pitch_mapped)
 
 
-func _map_range(value: float, range_map: Vrm1LookAt.RangeMap) -> float:
+func _map_range(value: float, range_map: Vrm1LookAtRangeMap) -> float:
 	if not range_map:
 		return 0.0
 	var sign_val: float = sign(value)
@@ -99,11 +101,27 @@ func _map_range(value: float, range_map: Vrm1LookAt.RangeMap) -> float:
 
 
 func _apply_bone(left_yaw_mapped: float, right_yaw_mapped: float, pitch_mapped: float) -> void:
-	var pitch_rad: float = deg_to_rad(pitch_mapped)
-	if _left_eye_bone_idx >= 0:
-		skeleton.set_bone_pose_rotation(_left_eye_bone_idx, Quaternion.from_euler(Vector3(pitch_rad, deg_to_rad(left_yaw_mapped), 0.0)))
-	if _right_eye_bone_idx >= 0:
-		skeleton.set_bone_pose_rotation(_right_eye_bone_idx, Quaternion.from_euler(Vector3(pitch_rad, deg_to_rad(right_yaw_mapped), 0.0)))
+	_apply_eye(_left_eye_bone_idx, left_yaw_mapped, pitch_mapped)
+	_apply_eye(_right_eye_bone_idx, right_yaw_mapped, pitch_mapped)
+
+
+## Turns one eye by yaw/pitch (degrees) on top of its rest pose. The turn is measured in the
+## model's axes (VRM 1.0 faces +Z, so yaw > 0 swings the gaze toward +X, the avatar's left,
+## and pitch > 0 lifts it toward +Y), not in the eye bone's own local axes: exporters leave
+## eye bones with arbitrary rest rotations (Blender's eye.L/eye.R point along their bone
+## roll), and writing the bare yaw/pitch rotation as the pose would throw that rest away and
+## spin the eye. Expressed in the bone's local frame the model-axes turn D becomes
+## rest_local * E^-1 * D * E, with E the eye's rest rotation in skeleton space; at 0/0 that
+## is exactly the rest rotation.
+func _apply_eye(bone_idx: int, yaw_deg: float, pitch_deg: float) -> void:
+	if bone_idx < 0:
+		return
+	var turn := Quaternion.from_euler(Vector3(-deg_to_rad(pitch_deg), deg_to_rad(yaw_deg), 0.0))
+	var rest_local: Quaternion = skeleton.get_bone_rest(bone_idx).basis.get_rotation_quaternion()
+	var rest_global: Quaternion = (
+			skeleton.get_bone_global_rest(bone_idx).basis.get_rotation_quaternion())
+	skeleton.set_bone_pose_rotation(
+			bone_idx, rest_local * rest_global.inverse() * turn * rest_global)
 
 
 func _apply_expression(yaw_mapped: float, pitch_mapped: float) -> void:
