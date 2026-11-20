@@ -30,6 +30,22 @@ static func resolve_node_name(gnode: GLTFNode) -> String:
 	return node_name
 
 
+## GLTFState.get_scene_node(), minus the entries that point at freed nodes. Outside the
+## editor Godot registers GLTFDocumentExtensionConvertImporterMesh at startup, so its
+## _import_post runs before ours (registered later, at runtime) and frees every
+## ImporterMeshInstance3D after swapping in a MeshInstance3D, without updating GLTFState's
+## node cache. Reading those entries hits a dangling pointer ("slot >= slot_max"), so for
+## mesh nodes in an already-converted scene this returns null and callers fall back to
+## their name lookup (replace_by keeps the name).
+static func get_scene_node_safe(state: GLTFState, root: Node, node_index: int) -> Node:
+	var gltf_nodes: Array[GLTFNode] = state.get_nodes()
+	if node_index < 0 or node_index >= gltf_nodes.size():
+		return null
+	if gltf_nodes[node_index].mesh >= 0 and root.find_children("", "ImporterMeshInstance3D", true, false).is_empty():
+		return null
+	return state.get_scene_node(node_index)
+
+
 ## Builds a node_index -> resolved_name map for every node in the glTF document.
 ## Used to feed gltf_node_names into the spring bone simulators.
 static func resolve_all_node_names(state: GLTFState) -> Dictionary[int, String]:
@@ -111,7 +127,7 @@ static func resolve_scene_node(state: GLTFState, root: Node, node_index: int) ->
 	if node_index < 0 or node_index >= gltf_nodes.size():
 		return null
 
-	var node_inst: Node = state.get_scene_node(node_index)
+	var node_inst: Node = get_scene_node_safe(state, root, node_index)
 	if node_inst != null:
 		return node_inst
 

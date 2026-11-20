@@ -310,7 +310,7 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 
 			if node_index != -1:
 				var gnode: GLTFNode = gltf_state.get_nodes()[node_index]
-				var mesh_instance_node: Node = gltf_state.get_scene_node(node_index)
+				var mesh_instance_node: Node = VrmSceneComposer.get_scene_node_safe(gltf_state, root_node, node_index)
 
 				if not mesh_instance_node:
 					var node_name: String = gnode.original_name

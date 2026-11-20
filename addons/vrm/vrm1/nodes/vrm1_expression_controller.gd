@@ -167,7 +167,7 @@ func _register_expression(expr_name: String, expr: Vrm1ExpressionData, gltf_stat
 		var node_index: int = mb.node
 		if node_index != -1 and node_index < gltf_state.get_nodes().size():
 			var gnode := gltf_state.get_nodes()[node_index]
-			var node_inst: Node = gltf_state.get_scene_node(node_index)
+			var node_inst: Node = VrmSceneComposer.get_scene_node_safe(gltf_state, root_node, node_index)
 			if not node_inst:
 				var node_name: String = gnode.original_name
 				if node_name.is_empty():
