@@ -19,9 +19,14 @@ const VrmMaterialVariantController = preload("vrm_material_variant_controller.gd
 const MTOON_BY_NAME_KEY: StringName = &"vrm_mtoon_by_name"
 
 ## Node metadata key under which tag_scene_node records the glTF node indices a generated
-## scene node stands for (PackedInt32Array). It stays on the saved scene; it is small and
-## nothing outside import-time resolution reads it.
+## scene node stands for (PackedInt32Array). Import-time only: release_scene_node_tags
+## strips it before the scene leaves generate_scene, so neither saved nor runtime scenes
+## keep it.
 const GLTF_NODE_INDICES_META: StringName = &"vrm_gltf_node_indices"
+
+## GLTFState additional-data key: instance ids of the extensions that tagged nodes and have
+## not yet released them in their _import_post.
+const _TAG_READERS_KEY: StringName = &"vrm_gltf_node_tag_readers"
 
 ## GLTFState additional-data key caching the GLTFNode -> node index lookup tag_scene_node
 ## needs, since _import_node is handed the GLTFNode but not its index.
@@ -122,9 +127,19 @@ static func resolve_image_index(image_index: int, state: GLTFState) -> Texture2D
 ## memory. The converter copies node metadata onto the replacement (_copy_meta), so this tag
 ## survives where the pointer does not. Several glTF nodes can share one scene node (every
 ## joint of a skin maps to its Skeleton3D), hence an index array.
-static func tag_scene_node(state: GLTFState, gltf_node: GLTFNode, node: Node) -> void:
+##
+## reader is the tagging extension; it must call release_scene_node_tags at the end of its
+## _import_post, and the tags are stripped when the last reader has done so.
+static func tag_scene_node(
+		state: GLTFState,
+		gltf_node: GLTFNode,
+		node: Node,
+		reader: Object = null,
+) -> void:
 	if state == null or gltf_node == null or node == null:
 		return
+	if reader != null:
+		_tag_readers(state)[reader.get_instance_id()] = true
 	var node_index: int = _gltf_node_index(state, gltf_node)
 	if node_index < 0:
 		return
@@ -182,6 +197,41 @@ static func resolve_scene_node(
 	if node_inst == null:
 		node_inst = root.find_child(node_name.replace(".", "_"), true, false)
 	return node_inst
+
+
+## Called by every tagging extension at the very end of its _import_post. The tags are
+## stripped from root's tree once no tagging extension is left to read them, so the outcome
+## does not depend on the order Godot runs the extensions in: whichever runs last strips,
+## and Godot's mesh converter copies the tags (or their absence) either way.
+static func release_scene_node_tags(state: GLTFState, root: Node, reader: Object) -> void:
+	if state == null:
+		return
+	var readers: Dictionary = _tag_readers(state)
+	readers.erase(reader.get_instance_id())
+	if not readers.is_empty():
+		return
+	strip_scene_node_tags(root)
+	state.set_additional_data(_GLTF_NODE_INDEX_KEY, null)
+
+
+## Removes every tag_scene_node tag from root and its descendants.
+static func strip_scene_node_tags(root: Node) -> void:
+	if root == null:
+		return
+	var pending: Array[Node] = [root]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		if node.has_meta(GLTF_NODE_INDICES_META):
+			node.remove_meta(GLTF_NODE_INDICES_META)
+		pending.append_array(node.get_children(true))
+
+
+static func _tag_readers(state: GLTFState) -> Dictionary:
+	var readers: Variant = state.get_additional_data(_TAG_READERS_KEY)
+	if not (readers is Dictionary):
+		readers = {}
+		state.set_additional_data(_TAG_READERS_KEY, readers)
+	return readers
 
 
 static func _gltf_node_index(state: GLTFState, gltf_node: GLTFNode) -> int:

@@ -82,15 +82,20 @@ func test_vrm0_expression_binds_target_their_gltf_node_after_runtime_import() ->
 
 ## The fix rests on Godot copying node metadata from the freed ImporterMeshInstance3D onto
 ## its MeshInstance3D replacement (GLTFDocumentExtensionConvertImporterMesh::_copy_meta).
-## If a Godot update drops that, this fails instead of binds quietly vanishing again.
+## If a Godot update drops that, this fails instead of binds quietly vanishing again. The
+## tags are stripped before generate_scene returns, so a probe extension registered after
+## the converter reads them from inside the import, as a tag reader like the VRM ones.
 func test_import_tags_survive_the_runtime_mesh_conversion() -> void:
+	var probe := TagProbe.new()
+	GLTFDocument.register_gltf_document_extension(probe)
 	var state := GLTFState.new()
 	var root: Node = _import_buffer(FileAccess.get_file_as_bytes(VRM1_PATH), state)
+	GLTFDocument.unregister_gltf_document_extension(probe)
 	assert_not_null(root, "the tester VRM 1.0 should import")
 	if root == null:
 		return
 
-	var scene_nodes: Dictionary[int, Node] = VrmSceneComposer.collect_scene_nodes(root)
+	var scene_nodes: Dictionary = state.get_additional_data(TagProbe.SCENE_NODES_KEY)
 	var gltf_nodes: Array[GLTFNode] = state.get_nodes()
 	assert_eq(scene_nodes.size(), gltf_nodes.size(), "every glTF node should be tagged")
 	for i: int in range(gltf_nodes.size()):
@@ -108,6 +113,47 @@ func test_import_tags_survive_the_runtime_mesh_conversion() -> void:
 		else:
 			assert_eq(String(node.name), VrmSceneComposer.resolve_node_name(gltf_nodes[i]),
 					"glTF node %d should resolve to the node named after it" % i)
+	assert_eq(_tagged_nodes(root), [] as Array[String],
+			"the tags should be gone once the last reader released them")
+
+
+func test_runtime_import_leaves_no_tags() -> void:
+	for path: String in [VRM1_PATH, VRM0_PATH]:
+		var state := GLTFState.new()
+		var root: Node = _import_buffer(FileAccess.get_file_as_bytes(path), state)
+		assert_not_null(root, "%s should import" % path)
+		if root != null:
+			assert_eq(_tagged_nodes(root), [] as Array[String], "%s should keep no tags" % path)
+
+
+## Stripping must not depend on extension order: a tag reader running before Godot's mesh
+## converter and the VRM extensions must neither strip early (binds still resolve) nor
+## leave the tags behind.
+func test_tags_are_stripped_whatever_the_extension_order() -> void:
+	var early_probe := TagProbe.new()
+	GLTFDocument.register_gltf_document_extension(early_probe, true)
+	var state := GLTFState.new()
+	var root: Node = _import_buffer(_with_vrm1_morph_bind(_read_glb(VRM1_PATH)), state)
+	GLTFDocument.unregister_gltf_document_extension(early_probe)
+	assert_not_null(root, "the patched tester VRM 1.0 should import")
+	if root == null:
+		return
+
+	assert_eq(_assert_vrm1_binds_hit_their_nodes(state, root), 1,
+			"the happy bind should still compile after an early reader released")
+	assert_eq(_tagged_nodes(root), [] as Array[String], "no tags should be left")
+
+
+## The editor-imported scenes (.godot/imported/*.scn) of the committed tester VRMs.
+func test_saved_tester_scenes_keep_no_tags() -> void:
+	for path: String in [VRM1_PATH, VRM0_PATH]:
+		var packed: PackedScene = load(path)
+		assert_not_null(packed, "%s should have an imported scene" % path)
+		if packed == null:
+			continue
+		var root: Node = packed.instantiate()
+		autofree(root)
+		assert_eq(_tagged_nodes(root), [] as Array[String], "%s should keep no tags" % path)
 
 
 ## The real case, when the licensed asset is present locally.
@@ -162,6 +208,17 @@ func _assert_vrm1_binds_hit_their_nodes(state: GLTFState, root: Node) -> int:
 						"%s bind %d should target its glTF node" % [expr_name, i])
 			checked += 1
 	return checked
+
+
+func _tagged_nodes(root: Node) -> Array[String]:
+	var tagged: Array[String] = []
+	var pending: Array[Node] = [root]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		if node.has_meta(VrmSceneComposer.GLTF_NODE_INDICES_META):
+			tagged.append(String(node.name))
+		pending.append_array(node.get_children(true))
+	return tagged
 
 
 func _import_buffer(bytes: PackedByteArray, state: GLTFState) -> Node:
@@ -241,3 +298,25 @@ func _with_vrm0_morph_bind(glb: Dictionary) -> PackedByteArray:
 		if group["presetName"] == "joy":
 			group["binds"] = [{ "mesh": 0, "index": 0, "weight": 100.0 }]
 	return _write_glb(glb)
+
+
+## Tags like the VRM extensions do and reads the tags in its own _import_post. GLTFDocument
+## runs its own instance of each registered extension, so the result goes on the state.
+class TagProbe:
+	extends GLTFDocumentExtension
+
+	const SCENE_NODES_KEY: StringName = &"tag_probe_scene_nodes"
+
+	func _import_node(
+			state: GLTFState,
+			gltf_node: GLTFNode,
+			_json: Dictionary,
+			node: Node,
+	) -> Error:
+		VrmSceneComposer.tag_scene_node(state, gltf_node, node, self)
+		return OK
+
+	func _import_post(state: GLTFState, root: Node) -> Error:
+		state.set_additional_data(SCENE_NODES_KEY, VrmSceneComposer.collect_scene_nodes(root))
+		VrmSceneComposer.release_scene_node_tags(state, root, self)
+		return OK
