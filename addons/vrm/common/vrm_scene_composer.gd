@@ -39,6 +39,22 @@ static func resolve_node_name(gnode: GLTFNode) -> String:
 	return node_name
 
 
+## GLTFState.get_scene_node(), minus the entries that point at freed nodes. Outside the
+## editor Godot registers GLTFDocumentExtensionConvertImporterMesh at startup, so its
+## _import_post runs before ours (registered later, at runtime) and frees every
+## ImporterMeshInstance3D after swapping in a MeshInstance3D, without updating GLTFState's
+## node cache. Reading those entries hits a dangling pointer ("slot >= slot_max"), so for
+## mesh nodes in an already-converted scene this returns null and callers fall back to
+## their name lookup (replace_by keeps the name).
+static func get_scene_node_safe(state: GLTFState, root: Node, node_index: int) -> Node:
+	var gltf_nodes: Array[GLTFNode] = state.get_nodes()
+	if node_index < 0 or node_index >= gltf_nodes.size():
+		return null
+	if gltf_nodes[node_index].mesh >= 0 and root.find_children("", "ImporterMeshInstance3D", true, false).is_empty():
+		return null
+	return state.get_scene_node(node_index)
+
+
 ## Builds a node_index -> resolved_name map for every node in the glTF document.
 ## Used to feed gltf_node_names into the spring bone simulators.
 static func resolve_all_node_names(state: GLTFState) -> Dictionary[int, String]:
@@ -114,7 +130,8 @@ static func resolve_image_index(image_index: int, state: GLTFState) -> Texture2D
 ## Records on a freshly generated scene node which glTF node index it stands for. Called from
 ## each VRM extension's _import_node, while the node GLTFState hands over is still alive.
 ##
-## Never resolve a glTF node through GLTFState.get_scene_node() in _import_post: outside the
+## Never resolve a glTF node through a raw GLTFState.get_scene_node() in _import_post (use
+## resolve_scene_node, whose cache step is get_scene_node_safe): outside the
 ## editor Godot registers GLTFDocumentExtensionConvertImporterMesh ahead of script
 ## extensions, and its import_post replaces every ImporterMeshInstance3D with a new
 ## MeshInstance3D and frees the old node without updating GLTFState's scene_nodes. From then
@@ -153,12 +170,14 @@ static func collect_scene_nodes(root: Node) -> Dictionary[int, Node]:
 	return scene_nodes
 
 
-## Resolves a glTF node index to its scene node, preferring the import-time tags
-## (collect_scene_nodes; built here when scene_nodes is empty) and falling back to a
-## name-based find_child (needed for trees that were never tagged, e.g. built without the
-## VRM extensions' _import_node). Handles Godot's dot-to-underscore node name sanitization on
-## the fallback path. Deliberately never calls GLTFState.get_scene_node(); see
-## tag_scene_node for why.
+## Resolves a glTF node index to its scene node. Lookup order:
+## 1. the import-time tags (collect_scene_nodes; built here when scene_nodes is empty) -
+##    the VRM extensions tag every node they import, so this answers every VRM/VRMA import;
+## 2. get_scene_node_safe, i.e. GLTFState's cache but never a mesh entry once Godot's
+##    runtime converter has freed the importer meshes - only reached for untagged trees
+##    (a generate_scene the VRM extensions did not take part in), where it still tells
+##    apart nodes whose names are not unique;
+## 3. a name-based find_child, handling Godot's dot-to-underscore name sanitization.
 static func resolve_scene_node(
 		state: GLTFState,
 		root: Node,
@@ -172,6 +191,8 @@ static func resolve_scene_node(
 	if scene_nodes.is_empty():
 		scene_nodes = collect_scene_nodes(root)
 	var node_inst: Node = scene_nodes.get(node_index)
+	if node_inst == null:
+		node_inst = get_scene_node_safe(state, root, node_index)
 	if node_inst != null:
 		return node_inst
 

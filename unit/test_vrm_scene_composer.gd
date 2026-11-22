@@ -704,3 +704,41 @@ func test_build_material_variant_entries_returns_empty_for_empty_mappings() -> v
 	var entries: Array[VrmMaterialVariantMapping] = VrmSceneComposer.build_material_variant_entries(root, {})
 
 	assert_true(entries.is_empty())
+
+
+# ---------------------------------------------------------------------------
+# get_scene_node_safe
+# Outside the editor the importer-mesh converter frees every ImporterMeshInstance3D before
+# our _import_post runs, leaving GLTFState's cache pointing at freed nodes. Mesh entries in
+# a converted scene must never be read from the cache.
+# ---------------------------------------------------------------------------
+
+func test_get_scene_node_safe_skips_mesh_nodes_once_converted() -> void:
+	var state := _make_state_with_node("Body")
+	state.get_nodes()[0].mesh = 0
+	var root := Node3D.new()
+	add_child_autofree(root)
+	root.add_child(MeshInstance3D.new())
+
+	assert_null(VrmSceneComposer.get_scene_node_safe(state, root, 0))
+
+
+func test_get_scene_node_safe_rejects_out_of_range_index() -> void:
+	var state := _make_state_with_node("Foo")
+	var root := Node3D.new()
+	add_child_autofree(root)
+
+	assert_null(VrmSceneComposer.get_scene_node_safe(state, root, 5))
+	assert_null(VrmSceneComposer.get_scene_node_safe(state, root, -1))
+
+
+func test_resolve_scene_node_falls_back_to_name_for_converted_mesh() -> void:
+	var state := _make_state_with_node("Body")
+	state.get_nodes()[0].mesh = 0
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var body := MeshInstance3D.new()
+	body.name = "Body"
+	root.add_child(body)
+
+	assert_eq(VrmSceneComposer.resolve_scene_node(state, root, 0), body)
