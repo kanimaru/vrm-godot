@@ -256,9 +256,9 @@ func test_build_spring_bone_collision_plane_aims_normal() -> void:
 
 # ---------------------------------------------------------------------------
 # resolve_scene_node
-# GLTFState.get_scene_node() only resolves once a real generate_scene() has populated its
-# internal cache, so a synthetic GLTFState (no real import) always falls through to the
-# name-based find_child - these tests exercise exactly that fallback path.
+# Untagged nodes (no VRM extension _import_node ran) fall through to the name-based
+# find_child; the first tests below exercise that fallback path. A real runtime import is
+# covered by test_vrm_import_scene_node_resolution.gd.
 # ---------------------------------------------------------------------------
 
 func _make_state_with_node(original_name: String) -> GLTFState:
@@ -311,6 +311,56 @@ func test_resolve_scene_node_returns_null_when_no_matching_child() -> void:
 	add_child_autofree(root)
 
 	assert_null(VrmSceneComposer.resolve_scene_node(state, root, 0))
+
+
+func test_resolve_scene_node_prefers_the_import_tag_over_the_name() -> void:
+	var state := _make_state_with_node("Foo")
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var decoy := Node3D.new()
+	decoy.name = "Foo"
+	root.add_child(decoy)
+	var tagged := Node3D.new()
+	tagged.name = "Renamed"
+	root.add_child(tagged)
+	VrmSceneComposer.tag_scene_node(state, state.get_nodes()[0], tagged)
+
+	assert_eq(VrmSceneComposer.resolve_scene_node(state, root, 0), tagged)
+
+
+func test_tag_scene_node_records_every_index_a_shared_node_stands_for() -> void:
+	var state := GLTFState.new()
+	var nodes: Array[GLTFNode] = [GLTFNode.new(), GLTFNode.new(), GLTFNode.new()]
+	state.nodes = nodes
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var skeleton := Skeleton3D.new()
+	root.add_child(skeleton)
+	var mesh := MeshInstance3D.new()
+	skeleton.add_child(mesh)
+	VrmSceneComposer.tag_scene_node(state, nodes[0], skeleton)
+	VrmSceneComposer.tag_scene_node(state, nodes[1], skeleton)
+	VrmSceneComposer.tag_scene_node(state, nodes[1], skeleton)  # a second extension, same node
+	VrmSceneComposer.tag_scene_node(state, nodes[2], mesh)
+
+	var scene_nodes: Dictionary[int, Node] = VrmSceneComposer.collect_scene_nodes(root)
+
+	assert_eq(scene_nodes.size(), 3)
+	assert_eq(scene_nodes.get(0), skeleton, "a joint resolves to its skeleton")
+	assert_eq(scene_nodes.get(1), skeleton, "every joint of the skin does")
+	assert_eq(scene_nodes.get(2), mesh)
+	assert_eq(skeleton.get_meta(VrmSceneComposer.GLTF_NODE_INDICES_META),
+			PackedInt32Array([0, 1]), "a repeated tag should not duplicate the index")
+
+
+func test_tag_scene_node_ignores_a_gltf_node_from_another_state() -> void:
+	var state := _make_state_with_node("Foo")
+	var node := Node3D.new()
+	autofree(node)
+
+	VrmSceneComposer.tag_scene_node(state, GLTFNode.new(), node)
+
+	assert_false(node.has_meta(VrmSceneComposer.GLTF_NODE_INDICES_META))
 
 
 # ---------------------------------------------------------------------------

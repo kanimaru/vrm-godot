@@ -2,6 +2,7 @@
 class_name VrmaAnimationLibraryBuilder
 extends RefCounted
 const VRMUtil = preload("../common/vrm_util.gd")
+const VrmSceneComposer = preload("../common/vrm_scene_composer.gd")
 
 ## Converts a raw VRMA GLTFState + generated scene into a retargeted AnimationLibrary.
 ## Bone rotations are normalized from the VRMA's own T-pose rest rotations so they can
@@ -23,7 +24,7 @@ static func build(state: GLTFState, scene: Node) -> AnimationLibrary:
 		return AnimationLibrary.new()
 
 	var role_map: Dictionary = _build_role_map(vrma)
-	var name_to_idx: Dictionary = _build_name_to_idx(state)
+	var name_to_idx: Dictionary = _build_name_to_idx(state, scene)
 	var world_rests: Dictionary = _compute_world_rest_rotations(state)
 	var local_rests: Dictionary = _get_local_rest_rotations(state)
 	var local_translations: Dictionary = _get_local_rest_translations(state)
@@ -102,11 +103,15 @@ static func _build_role_map(vrma: VrmaTopLevel) -> Dictionary:
 	return map
 
 
-static func _build_name_to_idx(state: GLTFState) -> Dictionary:
+## Resolves scene nodes through VrmaExtension's import-time tags rather than
+## GLTFState.get_scene_node(), which dangles for any node Godot's runtime mesh converter
+## replaced during generate_scene (see VrmSceneComposer.tag_scene_node).
+static func _build_name_to_idx(state: GLTFState, scene: Node) -> Dictionary:
 	var map: Dictionary = {}
 	var gltf_nodes: Array[GLTFNode] = state.get_nodes()
+	var scene_nodes: Dictionary[int, Node] = VrmSceneComposer.collect_scene_nodes(scene)
 	for i: int in range(gltf_nodes.size()):
-		var scene_node: Node = state.get_scene_node(i)
+		var scene_node: Node = scene_nodes.get(i)
 		if scene_node != null:
 			map[scene_node.name] = i
 		else:

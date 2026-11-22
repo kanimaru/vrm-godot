@@ -12,6 +12,7 @@ const RuntimeTextureTransformBind = preload("../../common/vrm_runtime_texture_tr
 const RuntimeNodeMorphState = preload("../../common/vrm_runtime_node_morph_state.gd")
 const RuntimeMaterialColorState = preload("../../common/vrm_runtime_material_color_state.gd")
 const RuntimeMaterialUVState = preload("../../common/vrm_runtime_material_uv_state.gd")
+const VrmSceneComposer = preload("../../common/vrm_scene_composer.gd")
 
 ## VRM0's presetName enum spells gaze presets without a separator; map them to the
 ## underscored property names used everywhere else in this controller.
@@ -292,6 +293,10 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 	if not blend_shape_master:
 		return
 
+	# Built once from the import-time tags; never GLTFState.get_scene_node(), which dangles
+	# once Godot's runtime mesh converter has replaced the mesh nodes.
+	var scene_nodes: Dictionary[int, Node] = VrmSceneComposer.collect_scene_nodes(root_node)
+
 	for group: Vrm0BlendShapeGroup in blend_shape_master.blend_shape_groups:
 		var expression: RuntimeExpression = RuntimeExpression.new()
 		expression.is_binary = group.is_binary
@@ -309,17 +314,8 @@ func compile_vrm0_binds(blend_shape_master: Vrm0BlendShape, gltf_state: GLTFStat
 			var node_index: int = _find_node_with_mesh(gltf_state, blend_shape_bind.mesh)
 
 			if node_index != -1:
-				var gnode: GLTFNode = gltf_state.get_nodes()[node_index]
-				var mesh_instance_node: Node = gltf_state.get_scene_node(node_index)
-
-				if not mesh_instance_node:
-					var node_name: String = gnode.original_name
-					if node_name.is_empty():
-						node_name = gnode.resource_name
-					mesh_instance_node = root_node.find_child(node_name, true, false)
-					if not mesh_instance_node:
-						# Fallback for Godot's dot-to-underscore node name sanitization
-						mesh_instance_node = root_node.find_child(node_name.replace(".", "_"), true, false)
+				var mesh_instance_node: Node = VrmSceneComposer.resolve_scene_node(
+						gltf_state, root_node, node_index, scene_nodes)
 
 				if not mesh_instance_node:
 					continue

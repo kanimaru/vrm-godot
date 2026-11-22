@@ -217,6 +217,12 @@ func _parse_secondary_animation(d: Dictionary) -> Vrm0SecondaryAnimation:
 	return sec
 
 
+func _import_node(state: GLTFState, gltf_node: GLTFNode, _json: Dictionary, node: Node) -> Error:
+	# Tag while the node is still alive: _import_post must not use get_scene_node().
+	VrmSceneComposer.tag_scene_node(state, gltf_node, node)
+	return OK
+
+
 func _import_post(state: GLTFState, root: Node) -> Error:
 	var vrm_top_level: Vrm0TopLevel = state.get_additional_data("vrm0") as Vrm0TopLevel
 	if vrm_top_level == null:

@@ -390,6 +390,12 @@ func _parse_node_constraint(node_idx: int, d: Dictionary) -> Vrm1NodeConstraint:
 	return nc
 
 
+func _import_node(state: GLTFState, gltf_node: GLTFNode, _json: Dictionary, node: Node) -> Error:
+	# Tag while the node is still alive: _import_post must not use get_scene_node().
+	VrmSceneComposer.tag_scene_node(state, gltf_node, node)
+	return OK
+
+
 func _import_post(state: GLTFState, root: Node) -> Error:
 	var vrm_top_level: Vrm1TopLevel = state.get_additional_data("vrm1") as Vrm1TopLevel
 	if vrm_top_level == null:
@@ -493,10 +499,12 @@ func _import_post(state: GLTFState, root: Node) -> Error:
 func _apply_first_person_visibility(root: Node, first_person: Vrm1FirstPerson, state: GLTFState) -> void:
 	if first_person == null:
 		return
+	var scene_nodes: Dictionary[int, Node] = VrmSceneComposer.collect_scene_nodes(root)
 	for annotation: Vrm1FirstPersonMeshAnnotation in first_person.mesh_annotations:
 		if annotation.type != "thirdPersonOnly" and annotation.type != "firstPersonOnly":
 			continue
-		var mesh_node: Node = VrmSceneComposer.resolve_scene_node(state, root, annotation.node)
+		var mesh_node: Node = VrmSceneComposer.resolve_scene_node(
+				state, root, annotation.node, scene_nodes)
 		if not (mesh_node is VisualInstance3D):
 			continue
 		var visual: VisualInstance3D = mesh_node

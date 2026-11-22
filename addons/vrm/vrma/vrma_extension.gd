@@ -2,9 +2,19 @@
 extends GLTFDocumentExtension
 class_name VrmaExtension
 
+const VrmSceneComposer = preload("../common/vrm_scene_composer.gd")
+
 
 func _get_supported_extensions() -> PackedStringArray:
 	return PackedStringArray(["VRMC_vrm_animation"])
+
+
+func _import_node(state: GLTFState, gltf_node: GLTFNode, _json: Dictionary, node: Node) -> Error:
+	# This extension has no _import_preflight filter, so it sees every glTF in the project:
+	# tag only VRMA scenes, for VrmaAnimationLibraryBuilder (never get_scene_node()).
+	if state.get_additional_data("vrma") is VrmaTopLevel:
+		VrmSceneComposer.tag_scene_node(state, gltf_node, node)
+	return OK
 
 
 func _import_post_parse(state: GLTFState) -> Error:

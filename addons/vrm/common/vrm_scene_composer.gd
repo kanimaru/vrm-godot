@@ -18,6 +18,15 @@ const VrmMaterialVariantController = preload("vrm_material_variant_controller.gd
 ## glTF material name -> MToon ShaderMaterial map.
 const MTOON_BY_NAME_KEY: StringName = &"vrm_mtoon_by_name"
 
+## Node metadata key under which tag_scene_node records the glTF node indices a generated
+## scene node stands for (PackedInt32Array). It stays on the saved scene; it is small and
+## nothing outside import-time resolution reads it.
+const GLTF_NODE_INDICES_META: StringName = &"vrm_gltf_node_indices"
+
+## GLTFState additional-data key caching the GLTFNode -> node index lookup tag_scene_node
+## needs, since _import_node is handed the GLTFNode but not its index.
+const _GLTF_NODE_INDEX_KEY: StringName = &"vrm_gltf_node_index"
+
 
 ## Resolves a single glTF node's Godot-facing name, preferring original_name and
 ## falling back to resource_name (Godot may rename nodes for uniqueness/validity).
@@ -102,16 +111,67 @@ static func resolve_image_index(image_index: int, state: GLTFState) -> Texture2D
 	return images[image_index]
 
 
-## Resolves a glTF node index to its scene node, preferring GLTFState's own mapping (built
-## during import) and falling back to a name-based find_child (needed once the scene has
-## already round-tripped through save/load, where GLTFState's node cache no longer applies).
-## Handles Godot's dot-to-underscore node name sanitization on the fallback path.
-static func resolve_scene_node(state: GLTFState, root: Node, node_index: int) -> Node:
+## Records on a freshly generated scene node which glTF node index it stands for. Called from
+## each VRM extension's _import_node, while the node GLTFState hands over is still alive.
+##
+## Never resolve a glTF node through GLTFState.get_scene_node() in _import_post: outside the
+## editor Godot registers GLTFDocumentExtensionConvertImporterMesh ahead of script
+## extensions, and its import_post replaces every ImporterMeshInstance3D with a new
+## MeshInstance3D and frees the old node without updating GLTFState's scene_nodes. From then
+## on get_scene_node() returns a dangling pointer - null, or whatever object reused that
+## memory. The converter copies node metadata onto the replacement (_copy_meta), so this tag
+## survives where the pointer does not. Several glTF nodes can share one scene node (every
+## joint of a skin maps to its Skeleton3D), hence an index array.
+static func tag_scene_node(state: GLTFState, gltf_node: GLTFNode, node: Node) -> void:
+	if state == null or gltf_node == null or node == null:
+		return
+	var node_index: int = _gltf_node_index(state, gltf_node)
+	if node_index < 0:
+		return
+	var indices: PackedInt32Array = node.get_meta(GLTF_NODE_INDICES_META, PackedInt32Array())
+	if indices.has(node_index):
+		return
+	indices.append(node_index)
+	node.set_meta(GLTF_NODE_INDICES_META, indices)
+
+
+## Builds a glTF node index -> scene node map by walking root's live tree for the tags
+## tag_scene_node left. Build it once per _import_post (or after generate_scene) and pass it
+## to resolve_scene_node; it must be rebuilt after anything replaces nodes in the tree.
+static func collect_scene_nodes(root: Node) -> Dictionary[int, Node]:
+	var scene_nodes: Dictionary[int, Node] = {}
+	if root == null:
+		return scene_nodes
+	var pending: Array[Node] = [root]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		if node.has_meta(GLTF_NODE_INDICES_META):
+			var indices: PackedInt32Array = node.get_meta(GLTF_NODE_INDICES_META)
+			for node_index: int in indices:
+				scene_nodes[node_index] = node
+		pending.append_array(node.get_children(true))
+	return scene_nodes
+
+
+## Resolves a glTF node index to its scene node, preferring the import-time tags
+## (collect_scene_nodes; built here when scene_nodes is empty) and falling back to a
+## name-based find_child (needed for trees that were never tagged, e.g. built without the
+## VRM extensions' _import_node). Handles Godot's dot-to-underscore node name sanitization on
+## the fallback path. Deliberately never calls GLTFState.get_scene_node(); see
+## tag_scene_node for why.
+static func resolve_scene_node(
+		state: GLTFState,
+		root: Node,
+		node_index: int,
+		scene_nodes: Dictionary[int, Node] = {},
+) -> Node:
 	var gltf_nodes: Array[GLTFNode] = state.get_nodes()
-	if node_index < 0 or node_index >= gltf_nodes.size():
+	if node_index < 0 or node_index >= gltf_nodes.size() or root == null:
 		return null
 
-	var node_inst: Node = state.get_scene_node(node_index)
+	if scene_nodes.is_empty():
+		scene_nodes = collect_scene_nodes(root)
+	var node_inst: Node = scene_nodes.get(node_index)
 	if node_inst != null:
 		return node_inst
 
@@ -122,6 +182,18 @@ static func resolve_scene_node(state: GLTFState, root: Node, node_index: int) ->
 	if node_inst == null:
 		node_inst = root.find_child(node_name.replace(".", "_"), true, false)
 	return node_inst
+
+
+static func _gltf_node_index(state: GLTFState, gltf_node: GLTFNode) -> int:
+	var index_by_node: Variant = state.get_additional_data(_GLTF_NODE_INDEX_KEY)
+	if not (index_by_node is Dictionary):
+		var lookup: Dictionary[GLTFNode, int] = {}
+		var gltf_nodes: Array[GLTFNode] = state.get_nodes()
+		for i: int in range(gltf_nodes.size()):
+			lookup[gltf_nodes[i]] = i
+		index_by_node = lookup
+		state.set_additional_data(_GLTF_NODE_INDEX_KEY, lookup)
+	return (index_by_node as Dictionary).get(gltf_node, -1)
 
 
 ## Creates and attaches a VrmAnimationRetargeter, wiring it to the root's AnimationPlayer

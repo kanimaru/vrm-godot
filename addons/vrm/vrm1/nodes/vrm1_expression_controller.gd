@@ -10,6 +10,7 @@ const RuntimeNodeMorphState = preload("../../common/vrm_runtime_node_morph_state
 const RuntimeMaterialColorState = preload("../../common/vrm_runtime_material_color_state.gd")
 const RuntimeMaterialUVState = preload("../../common/vrm_runtime_material_uv_state.gd")
 const Vrm1ActiveExpression = preload("../../common/vrm_active_expression.gd")
+const VrmSceneComposer = preload("../../common/vrm_scene_composer.gd")
 
 
 @export_range(0.0, 1.0) var happy: float = 0.0:
@@ -144,18 +145,28 @@ func compile_vrm1_binds(expressions_ref: Vrm1Expressions, gltf_state: GLTFState,
 	if expressions_ref == null:
 		return
 
+	# Built once from the import-time tags; never GLTFState.get_scene_node(), which dangles
+	# once Godot's runtime mesh converter has replaced the mesh nodes.
+	var scene_nodes: Dictionary[int, Node] = VrmSceneComposer.collect_scene_nodes(root_node)
+
 	# Gather presets
 	for preset_name: String in expressions_ref.preset:
 		var expr: Vrm1ExpressionData = expressions_ref.preset[preset_name]
-		_register_expression(preset_name, expr, gltf_state, root_node)
+		_register_expression(preset_name, expr, gltf_state, root_node, scene_nodes)
 
 	# Gather custom
 	for custom_name: String in expressions_ref.custom:
 		var expr: Vrm1ExpressionData = expressions_ref.custom[custom_name]
-		_register_expression(custom_name, expr, gltf_state, root_node)
+		_register_expression(custom_name, expr, gltf_state, root_node, scene_nodes)
 
 
-func _register_expression(expr_name: String, expr: Vrm1ExpressionData, gltf_state: GLTFState, root_node: Node) -> void:
+func _register_expression(
+		expr_name: String,
+		expr: Vrm1ExpressionData,
+		gltf_state: GLTFState,
+		root_node: Node,
+		scene_nodes: Dictionary[int, Node],
+) -> void:
 	var run_expr = RuntimeExpression.new()
 	run_expr.is_binary = expr.is_binary
 	run_expr.override_blink = expr.override_blink
@@ -166,16 +177,8 @@ func _register_expression(expr_name: String, expr: Vrm1ExpressionData, gltf_stat
 	for mb: Vrm1ExpressionMorphBind in expr.morph_binds:
 		var node_index: int = mb.node
 		if node_index != -1 and node_index < gltf_state.get_nodes().size():
-			var gnode := gltf_state.get_nodes()[node_index]
-			var node_inst: Node = gltf_state.get_scene_node(node_index)
-			if not node_inst:
-				var node_name: String = gnode.original_name
-				if node_name.is_empty():
-					node_name = gnode.resource_name
-				node_inst = root_node.find_child(node_name, true, false)
-				if not node_inst:
-					# Fallback for Godot's dot-to-underscore node name sanitization
-					node_inst = root_node.find_child(node_name.replace(".", "_"), true, false)
+			var node_inst: Node = VrmSceneComposer.resolve_scene_node(
+					gltf_state, root_node, node_index, scene_nodes)
 
 			var is_mesh := node_inst is MeshInstance3D or (node_inst and node_inst.get_class() == "ImporterMeshInstance3D")
 			if node_inst and is_mesh:
