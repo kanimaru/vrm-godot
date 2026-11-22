@@ -353,26 +353,6 @@ func test_tag_scene_node_records_every_index_a_shared_node_stands_for() -> void:
 			PackedInt32Array([0, 1]), "a repeated tag should not duplicate the index")
 
 
-func test_release_scene_node_tags_strips_only_after_the_last_reader() -> void:
-	var state := _make_state_with_node("Foo")
-	var root := Node3D.new()
-	add_child_autofree(root)
-	var foo := Node3D.new()
-	foo.name = "Foo"
-	root.add_child(foo)
-	var first := RefCounted.new()
-	var second := RefCounted.new()
-	VrmSceneComposer.tag_scene_node(state, state.get_nodes()[0], foo, first)
-	VrmSceneComposer.tag_scene_node(state, state.get_nodes()[0], foo, second)
-
-	VrmSceneComposer.release_scene_node_tags(state, root, second)
-	assert_true(foo.has_meta(VrmSceneComposer.GLTF_NODE_INDICES_META),
-			"a reader that has not released yet still needs the tags")
-	VrmSceneComposer.release_scene_node_tags(state, root, first)
-	assert_false(foo.has_meta(VrmSceneComposer.GLTF_NODE_INDICES_META),
-			"the last release strips them")
-
-
 func test_tag_scene_node_ignores_a_gltf_node_from_another_state() -> void:
 	var state := _make_state_with_node("Foo")
 	var node := Node3D.new()

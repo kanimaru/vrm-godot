@@ -4,10 +4,6 @@ class_name VrmaExtension
 
 const VrmSceneComposer = preload("../common/vrm_scene_composer.gd")
 
-## GLTFState additional-data key: glTF node index -> generated scene node name, recorded in
-## _import_post for VrmaAnimationLibraryBuilder.
-const SCENE_NODE_NAMES_KEY: StringName = &"vrma_scene_node_names"
-
 
 func _get_supported_extensions() -> PackedStringArray:
 	return PackedStringArray(["VRMC_vrm_animation"])
@@ -17,21 +13,7 @@ func _import_node(state: GLTFState, gltf_node: GLTFNode, _json: Dictionary, node
 	# This extension has no _import_preflight filter, so it sees every glTF in the project:
 	# tag only VRMA scenes, for VrmaAnimationLibraryBuilder (never get_scene_node()).
 	if state.get_additional_data("vrma") is VrmaTopLevel:
-		VrmSceneComposer.tag_scene_node(state, gltf_node, node, self)
-	return OK
-
-
-## VrmaAnimationLibraryBuilder runs after generate_scene, when the tags are gone, so the
-## names it needs are read off the tagged nodes here and kept on the state (plain strings,
-## unaffected by Godot replacing nodes later).
-func _import_post(state: GLTFState, root: Node) -> Error:
-	if state.get_additional_data("vrma") is VrmaTopLevel:
-		var node_names: Dictionary[int, String] = {}
-		var scene_nodes: Dictionary[int, Node] = VrmSceneComposer.collect_scene_nodes(root)
-		for node_index: int in scene_nodes:
-			node_names[node_index] = String(scene_nodes[node_index].name)
-		state.set_additional_data(SCENE_NODE_NAMES_KEY, node_names)
-	VrmSceneComposer.release_scene_node_tags(state, root, self)
+		VrmSceneComposer.tag_scene_node(state, gltf_node, node)
 	return OK
 
 
